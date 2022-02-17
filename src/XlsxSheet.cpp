@@ -227,7 +227,7 @@ void XlsxSheet::consecutiveFunc(const size_t threadId, const unsigned char* cons
             }
             //std::cout << "Thread " << threadId << ": " << rowNumber << " / " << cellColumn << ", " << static_cast<int>(cellType) << " (offset " << offset << "): " << cellValueBuffer << std::endl;
             if (cellType == XlsxColumn::CellType::T_NUMERIC) {
-                double value;
+                double value = 0;
                 const bool isok = fast_double_parser::parse_number(cellValueBuffer, &value);
                 if (!isok) {
                     throw std::runtime_error("Error when parsing number");
@@ -471,7 +471,7 @@ void XlsxSheet::interleavedFunc(size_t numThreads, const size_t threadId, std::a
             }
             //std::cout << "Thread " << threadId << ": " << rowNumber << " / " << cellColumn << ", " << static_cast<int>(cellType) << " (offset " << offset << "): " << cellValueBuffer << std::endl;
             if (cellType == XlsxColumn::CellType::T_NUMERIC) {
-                double value;
+                double value = 0;
                 const bool isok = fast_double_parser::parse_number(cellValueBuffer, &value);
                 if (!isok) {
                     throw std::runtime_error("Error when parsing number");

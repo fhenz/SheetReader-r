@@ -14,6 +14,7 @@ XlsxFile::XlsxFile(const std::string archivePath)
     , mFileSharedStrings(nullptr)
     , mPathSharedStrings("")
     , mPathStyles("")
+    , mDate1904(false)
     , mParallelStrings(false)
     , mStringsConsecutive(false)
 {

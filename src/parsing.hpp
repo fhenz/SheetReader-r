@@ -6,8 +6,8 @@
 
 class ValueParser {
 public:
-    virtual void process(const unsigned char character);
-    virtual void reset();
+    virtual void process(const unsigned char character) = 0;
+    virtual void reset() = 0;
 };
 
 class IndexParser : public ValueParser {
