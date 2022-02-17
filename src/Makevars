@@ -1,0 +1,11 @@
+CXX_STD = CXX11
+PKG_CPPFLAGS = -DTARGET_R
+
+SOURCES = interface.cpp RcppExports.cpp XlsxColumn.cpp XlsxSheet.cpp XlsxFile.cpp miniz/miniz.cpp\
+    libdeflate/lib/gzip_decompress.c libdeflate/lib/utils.c libdeflate/lib/zlib_decompress.c\
+    libdeflate/lib/zlib_compress.c libdeflate/lib/deflate_compress.c libdeflate/lib/crc32.c\
+    libdeflate/lib/deflate_decompress.c libdeflate/lib/adler32.c libdeflate/lib/gzip_compress.c\
+    libdeflate/lib/arm/cpu_features.c libdeflate/lib/x86/cpu_features.c
+
+OBJECTS1 = $(SOURCES:.cpp=.o)
+OBJECTS = $(OBJECTS1:.c=.o)
