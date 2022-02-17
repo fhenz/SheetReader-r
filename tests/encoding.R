@@ -1,0 +1,6 @@
+library(SheetReader)
+data <- read_xlsx(system.file("extdata", "multi-test.xlsx", package = "SheetReader"), sheet = "encoding", header = FALSE)
+stopifnot(colnames(data) == c("Column0"))
+stopifnot(all.equal(charToRaw(data[1, "Column0"]), as.raw(c(0xc2, 0xb5))))
+stopifnot(all.equal(charToRaw(data[2, "Column0"]), as.raw(c(0xc3, 0x84, 0xc3, 0xa1, 0xc3, 0x9f))))
+stopifnot(all.equal(charToRaw(data[3, "Column0"]), as.raw(c(0xd1, 0x81, 0xd0, 0xbf, 0xd0, 0xb0, 0xd1, 0x81, 0xd0, 0xb8, 0xd0, 0xb1, 0xd0, 0xbe))))

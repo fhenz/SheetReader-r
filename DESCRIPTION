@@ -1,6 +1,6 @@
 Package: SheetReader
 Type: Package
-Title: Parse xlsx files
+Title: Parse xlsx Files
 Version: 1.0
 Date: 2022-02-17
 Authors@R: c(
@@ -19,3 +19,4 @@ Imports: Rcpp (>= 1.0.5)
 LinkingTo: Rcpp
 URL: https://github.com/fhenz/SheetReader-r
 BugReports: https://github.com/fhenz/SheetReader-r/issues
+Encoding: UTF-8

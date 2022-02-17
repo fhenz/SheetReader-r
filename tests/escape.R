@@ -1,0 +1,9 @@
+library(SheetReader)
+data <- read_xlsx(system.file("extdata", "multi-test.xlsx", package = "SheetReader"), sheet="escape")
+stopifnot(colnames(data) == c("Escape", "This"))
+stopifnot(data[1, "This"] == "&")
+stopifnot(data[2, "This"] == "") # single apostrophe gets interpreted as empty by excel for some reason
+stopifnot(data[3, "This"] == "\"")
+stopifnot(data[4, "This"] == ">")
+stopifnot(data[5, "This"] == "<")
+stopifnot(data[6, "This"] == "What is < than \"\" & '>'")
