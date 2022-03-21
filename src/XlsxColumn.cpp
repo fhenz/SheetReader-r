@@ -1,7 +1,7 @@
-#include "XlsxColumn.hpp"
+#include "XlsxColumn.h"
 
-#include "XlsxSheet.hpp"
-#include "XlsxFile.hpp"
+#include "XlsxSheet.h"
+#include "XlsxFile.h"
 
 XlsxColumn::XlsxColumn(const XlsxSheet& parent_sheet)
     : mParentSheet(parent_sheet)

@@ -1,9 +1,9 @@
 #include <Rcpp.h>
 #include <thread>
 
-#include "XlsxFile.hpp"
-#include "XlsxSheet.hpp"
-#include "XlsxColumn.hpp"
+#include "XlsxFile.h"
+#include "XlsxSheet.h"
+#include "XlsxColumn.h"
 
 Rcpp::RObject column_to_list(const XlsxFile& file, const XlsxColumn& column, const std::size_t size) {
 	size_t c = 0;

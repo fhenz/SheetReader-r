@@ -1,12 +1,12 @@
-#include "XlsxFile.hpp"
+#include "XlsxFile.h"
 
 #include <stdexcept>
 #include <map>
 #include <set>
 
-#include "XlsxSheet.hpp"
+#include "XlsxSheet.h"
 #include "libdeflate/lib/libdeflate.h"
-#include "parsing.hpp"
+#include "parsing.h"
 
 XlsxFile::XlsxFile(const std::string archivePath)
     : mArchivePath(archivePath)

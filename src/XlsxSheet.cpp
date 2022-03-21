@@ -1,15 +1,15 @@
-#include "XlsxSheet.hpp"
+#include "XlsxSheet.h"
 
 #include <map>
 #include <thread>
 #include <atomic>
 #include <array>
 
-#include "XlsxFile.hpp"
+#include "XlsxFile.h"
 
 #include "fast_double_parser/fast_double_parser.h"
 #include "libdeflate/lib/libdeflate.h"
-#include "parsing.hpp"
+#include "parsing.h"
 
 unsigned long strtoul(const char* start, const unsigned long length) {
     unsigned long val = 0;
