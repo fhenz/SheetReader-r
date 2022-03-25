@@ -58,3 +58,14 @@ read_xlsx(
     If you are sure you have enough memory you can specify this method to get slightly better runtime 
     (be aware that the decompressed content can be significantly larger than the shown file size).
 }
+\examples{
+exampleFile <- system.file("extdata", "multi-test.xlsx", package = "SheetReader")
+
+# Read first sheet of the file, using first row as column names
+df1 <- read_xlsx(exampleFile, sheet = 1, headers = TRUE)
+head(df1)
+
+# Read the "encoding" sheet, skipping 1 row and not using the next row as column names
+df2 <- read_xlsx(exampleFile, sheet = "encoding", headers = FALSE, skip_rows = 1)
+head(df2)
+}
