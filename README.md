@@ -3,6 +3,12 @@
 SheetReader provides functionality to read tabular data from Excel OOXML (.xlsx) files.
 This repository integrates SheetReader into a [R](https://www.R-project.org/) package, with [`Rcpp`](https://CRAN.R-project.org/package=Rcpp) serving as the interface for the parsing code written in C++.
 
+SheetReader is available via [CRAN](https://cran.r-project.org/package=SheetReader):
+```r
+install.packages("SheetReader")
+```
+
+## Overview
 SheetReader uses incremental decompression with buffer recycling to keep memory usage minimal, while employing multithreading where possible to speed up the parsing process.
 
 While there are existing packages for parsing Excel files into R (notably [`readxl`](https://github.com/tidyverse/readxl) and [`openxlsx`](https://github.com/ycphs/openxlsx)), I was not satisfied with their performance when processing large files.
@@ -10,7 +16,9 @@ While there are existing packages for parsing Excel files into R (notably [`read
 `openxlsx` is more efficient in terms of memory usage but generally slower than `readxl`.  
 Benchmarks on files of roughly these sizes (200,000 rows by 100 columns) indicate `SheetReader` to be about 3x faster with 20x less memory usage than `readxl`, and 15x faster with 10x less memory than `openxlsx`.
 Be aware that these are relatively old benchmarking results (early 2021) and obviously depend on the file being parsed (`SheetReader` takes advantage of some optional, but usually present, features of the OOXML format to improve performance).  
-Having said that, this package is very bare-bones and if you require anything other than parsing tabular data (e.g. retrieving sheet names, writing Excel files) then you should have a look at the other mentioned packages.
+Having said that, this package is very bare-bones and if you require anything other than parsing tabular data (e.g. retrieving sheet names, writing Excel files) then you should have a look at the other mentioned packages.  
+Additionally, the transformation to R dataframe currently assumes homogenous columns.
+If cell types in a column don't match the first non-blank cell, they are returned as NA.
 
 SheetReader includes and uses the following C/C++ libraries:  
 - [miniz](https://github.com/richgel999/miniz) for ZIP archive operations and decompression
