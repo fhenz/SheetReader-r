@@ -1,5 +1,5 @@
 CXX_STD = CXX11
-PKG_CPPFLAGS = -DTARGET_R
+PKG_CPPFLAGS = -DTARGET_R -DMINIZ_USE_UNALIGNED_LOADS_AND_STORES=0
 
 SOURCES = interface.cpp RcppExports.cpp XlsxColumn.cpp XlsxSheet.cpp XlsxFile.cpp miniz/miniz.cpp\
     libdeflate/lib/gzip_decompress.c libdeflate/lib/utils.c libdeflate/lib/zlib_decompress.c\
