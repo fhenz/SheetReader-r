@@ -3,10 +3,11 @@
 #include <string>
 #include <vector>
 #include <future>
-#include <unordered_map>
 
 #include "miniz/miniz.h"
+#if defined(TARGET_R)
 #include <Rcpp.h>
+#endif
 
 #include "XlsxSheet.h"
 

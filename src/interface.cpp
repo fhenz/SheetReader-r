@@ -119,7 +119,10 @@ Rcpp::DataFrame read_xlsx(const std::string path, SEXP sheet = R_NilValue, bool 
 		// really diminishing returns with higher number of threads
 		if (num_threads > 10) num_threads = 10;
 	}
-	if (num_threads <= 1) parallel = false;
+	if (num_threads <= 1) {
+		num_threads = 1;
+		parallel = false;
+	}
 
 	XlsxFile file(path);
 	file.mParallelStrings = parallel;
@@ -132,9 +135,13 @@ Rcpp::DataFrame read_xlsx(const std::string path, SEXP sheet = R_NilValue, bool 
 	bool success = false;
 	if (method == "efficient") {
 		// if "efficient", both sheet & strings need additional thread for decompression (meaning min is 2)
-		success = fsheet.interleaved(skip_rows, skip_columns, num_threads - parallel * 2 - (num_threads > 1));
+		int act_num_threads = num_threads - parallel * 2 - (num_threads > 1);
+		if (act_num_threads <= 0) act_num_threads = 1;
+		success = fsheet.interleaved(skip_rows, skip_columns, act_num_threads);
 	} else {
-		success = fsheet.consecutive(skip_rows, skip_columns, num_threads - parallel);
+		int act_num_threads = num_threads - parallel;
+		if (act_num_threads <= 0) act_num_threads = 1;
+		success = fsheet.consecutive(skip_rows, skip_columns, act_num_threads);
 	}
 	file.finalize();
 	if (!success) {

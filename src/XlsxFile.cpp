@@ -26,6 +26,9 @@ XlsxFile::XlsxFile(const std::string archivePath)
         mz_zip_error err = mFile->m_last_error;
         delete mFile;
         mFile = nullptr;
+        if (err == MZ_ZIP_FILE_OPEN_FAILED) {
+            throw std::invalid_argument("Unable to open file '" + mArchivePath + "'");
+        }
         throw std::invalid_argument("Failed to initalize file " + std::to_string(err));
     }
 
@@ -340,6 +343,7 @@ void XlsxFile::parseStyles() {
 void XlsxFile::parseSharedStrings() {
     if (mPathSharedStrings == "") {
         // No shared strings, not necessarily an error
+        mParallelStrings = false;
         return;
     }
     if (mParallelStrings) {
@@ -386,7 +390,7 @@ double XlsxFile::toDate(double date) const {
     // excel stores dates as days from 1900/1904, so we need to convert days to seconds
     // also just in case adjust for 1900 leap year bug
     if (!mDate1904 && date < 61) date = date + 1;
-    return (date - offset) * 86400;
+    return (date * 86400) - (offset * 86400);;
 }
 
 unsigned long long XlsxFile::addDynamicString(const char* str) {

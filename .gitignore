@@ -5,3 +5,6 @@ src-x64
 benchmarking
 testing
 .Rhistory
+SheetReader.Rcheck
+*tar.gz
+*.obj

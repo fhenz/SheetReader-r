@@ -46,6 +46,7 @@ inline size_t extractUnsigned(const char* buffer, const size_t baseOffset, const
 XlsxSheet::XlsxSheet(XlsxSheet&& sheet)
     : mParentFile(sheet.mParentFile)
     , mFile(sheet.mFile)
+    , mArchiveIndex(sheet.mArchiveIndex)
     , mColumns(sheet.mColumns)
     , mReserved(sheet.mReserved.load())
     , mFallbackSingle(sheet.mFallbackSingle.load())
