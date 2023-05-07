@@ -405,17 +405,14 @@ unsigned long long XlsxFile::addDynamicString(const char* str) {
     return idx;
 }
 
-const std::string& XlsxFile::getDynamicString(const unsigned long long index) {
+const std::string& XlsxFile::getDynamicString(const unsigned long long index) const {
     return mDynamicStrings[index];
 }
 
 XlsxSheet XlsxFile::getSheet(const int id) {
-    for (size_t i = 0; i < mSheetIndex.size(); ++i) {
-        if (std::get<0>(mSheetIndex[i]) == id) {
-            const int archiveIndex = fileIndex(mFile, std::get<3>(mSheetIndex[i]).c_str());
-            if (archiveIndex == -1) break;
-            return XlsxSheet(*this, mFile, archiveIndex);
-        }
+    if (id > 0 && id <= mSheetIndex.size()) {
+        const int archiveIndex = fileIndex(mFile, std::get<3>(mSheetIndex[id - 1]).c_str());
+        if (archiveIndex != -1) return XlsxSheet(*this, mFile, archiveIndex);
     }
     throw std::runtime_error("Unable to find specified sheet");
 }

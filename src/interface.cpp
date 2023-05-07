@@ -81,6 +81,209 @@ Rcpp::DataFrame sheet_to_dataframe(const XlsxFile& file, XlsxSheet& sheet) {
 	return result;
 }
 
+Rcpp::DataFrame cells_to_dataframe(const XlsxFile& file, XlsxSheet& sheet) {
+	const size_t nColumns = sheet.mDimension.first;
+	size_t nRows = sheet.mDimension.second;
+	/*for (size_t ithread = 0; ithread < sheet.mLocationInfos.size(); ++ithread) {
+		std::cout << "LocInfo: " << sheet.mLocationInfos[ithread].size() << " for " << sheet.mCells[ithread].size() << std::endl;
+	}*/
+	if (nRows == 0) {
+		// determine max rows (if dimension element not found), columns not needed
+		//TODO: this is actually wrong, we need to do it by chunk, not by thread (-> maintain iterator for every thread)
+		for (size_t ithread = 0; ithread < sheet.mCells.size(); ++ithread) {
+			size_t rowInfos = 0;
+			for (auto it = sheet.mLocationInfos[ithread].rbegin(); it != sheet.mLocationInfos[ithread].rend(); ++it) {
+				if (it->row == -1) {
+					rowInfos++;
+				} else {
+					if (it->row + rowInfos > nRows) nRows = nRows = it->row + rowInfos;
+					break;
+				}
+			}
+		}
+	}
+	// proxy vector to avoid R garbage collector housekeeping (later turned into Rcpp::List)
+	// also allows us to do the conversion without knowing the number of columns beforehand
+	std::vector<Rcpp::RObject> proxies;
+	proxies.reserve(nColumns);
+	Rcpp::CharacterVector names(nColumns);
+	std::vector<XlsxColumn::CellType> coltypes(nColumns, XlsxColumn::CellType::T_NONE);
+	int ci = 0;
+	for (auto& column : sheet.mColumns) {
+		names[ci] = "Column" + std::to_string(ci);
+		ci++;
+	}
+
+	unsigned long currentColumn = 0;
+	long long currentRow = -1;
+	std::vector<size_t> currentLocs(sheet.mCells.size(), 0);
+	const size_t maxBuffers = sheet.mCells.size() > 0 ? sheet.mCells[0].size() : 0;
+	for (size_t buf = 0; buf < maxBuffers; ++buf) {
+		for (size_t ithread = 0; ithread < sheet.mCells.size(); ++ithread) {
+			if (sheet.mCells[ithread].size() == 0) {
+				break;
+			}
+			const std::vector<XlsxCell> cells = sheet.mCells[ithread].front().first;
+			const std::vector<XlsxColumn::CellType> types = sheet.mCells[ithread].front().second;
+			const std::vector<LocationInfo>& locs = sheet.mLocationInfos[ithread];
+			size_t& currentLoc = currentLocs[ithread];
+			/*size_t icell = 0;
+			while (icell < cells.size()) {
+				const size_t to = (currentLoc < locs.size() && locs[currentLoc].buffer == buf) ? locs[currentLoc].cell : cells.size();
+				for (; icell < to; ++icell) {
+					const XlsxCell& cell = cells[icell];
+					if (currentRow > 0) {
+						if (coltypes[currentColumn] == XlsxColumn::CellType::T_NONE) {
+							Rcpp::RObject robj;
+							if (cell.type == XlsxColumn::CellType::T_NUMERIC) {
+								robj = Rcpp::NumericVector(nRows, Rcpp::NumericVector::get_na());
+							} else if (cell.type == XlsxColumn::CellType::T_STRING_REF || cell.type == XlsxColumn::CellType::T_STRING) {
+								robj = Rcpp::CharacterVector(nRows, Rcpp::CharacterVector::get_na());
+							} else if (cell.type == XlsxColumn::CellType::T_BOOLEAN) {
+								robj = Rcpp::LogicalVector(nRows, Rcpp::LogicalVector::get_na());
+							} else if (cell.type == XlsxColumn::CellType::T_DATE) {
+								robj = Rcpp::DatetimeVector(nRows, "UTC");
+								// fill with NAs, otherwise missing would be 1970-01-01
+								for (size_t i = 0; i < nRows; ++i) {
+									static_cast<Rcpp::DatetimeVector>(robj)[i] = Rcpp::DatetimeVector::get_na();
+								}
+							}
+							if (cell.type != XlsxColumn::CellType::T_NONE) {
+								lst[currentColumn] = robj;
+								proxies[currentColumn] = robj;
+								coltypes[currentColumn] = cell.type;
+							}
+						}
+						if (coltypes[currentColumn] != XlsxColumn::CellType::T_NONE) {
+							const XlsxColumn::CellType col_type = coltypes[currentColumn];
+							const bool compatible = ((cell.type == col_type)
+								|| (cell.type == XlsxColumn::CellType::T_STRING_REF && col_type == XlsxColumn::CellType::T_STRING)
+								|| (cell.type == XlsxColumn::CellType::T_STRING && col_type == XlsxColumn::CellType::T_STRING_REF));
+							if (compatible) {
+								//Rcpp::RObject robj = lst[currentColumn];
+								Rcpp::RObject& robj = proxies[currentColumn];
+								const unsigned long i = currentRow - 1;
+								//std::cout << "Insert " << currentColumn << "/" << i << ": " << static_cast<int>(cell.type) << " vs " << static_cast<int>(coltypes[currentColumn]) << std::endl;
+								if (cell.type == XlsxColumn::CellType::T_NUMERIC) {
+									static_cast<Rcpp::NumericVector>(robj)[i] = cell.data.real;
+								} else if (cell.type == XlsxColumn::CellType::T_STRING_REF) {
+									const auto str = file.getString(cell.data.integer);
+									static_cast<Rcpp::CharacterVector>(robj)[i] = str;
+								} else if (cell.type == XlsxColumn::CellType::T_STRING) {
+									const auto& str = file.getDynamicString(cell.data.integer);
+									static_cast<Rcpp::CharacterVector>(robj)[i] = Rf_mkCharCE(str.c_str(), CE_UTF8);
+								} else if (cell.type == XlsxColumn::CellType::T_BOOLEAN) {
+									static_cast<Rcpp::LogicalVector>(robj)[i] = cell.data.boolean;
+								} else if (cell.type == XlsxColumn::CellType::T_DATE) {
+									static_cast<Rcpp::DatetimeVector>(robj)[i] = cell.data.real;
+								}
+							}
+						}
+					}
+					++currentColumn;
+				}
+				while (locs[currentLoc].buffer == buf && locs[currentLoc].cell == icell) {
+					currentColumn = locs[currentLoc].column;
+					if (locs[currentLoc].row == -1) {
+						++currentRow;
+					} else {
+						currentRow = locs[currentLoc].row;
+					}
+					++currentLoc;
+				}
+			}*/
+			// icell <= cells.size() because there might be location info after last cell
+			for (size_t icell = 0; icell <= cells.size(); ++icell) {
+				while (currentLoc < locs.size() && locs[currentLoc].buffer == buf && locs[currentLoc].cell == icell) {
+					currentColumn = locs[currentLoc].column;
+					if (locs[currentLoc].row == -1) {
+						//std::cout << "LocInfo row " << locs[currentLoc].column << "/" << locs[currentLoc].row << " in " << ithread << ", " << buf << ", " << icell << ", " << currentLoc << std::endl;
+						++currentRow;
+					} else {
+						currentRow = locs[currentLoc].row;
+					}
+					++currentLoc;
+				}
+				if (icell >= cells.size()) break;
+				const XlsxCell& cell = cells[icell];
+				const XlsxColumn::CellType type = types[icell];
+
+				//if (currentColumn > maxCol) maxCol = currentColumn;
+
+				if (currentRow > 0) {
+					if (coltypes[currentColumn] == XlsxColumn::CellType::T_NONE) {
+						Rcpp::RObject robj;
+						if (type == XlsxColumn::CellType::T_NUMERIC) {
+							robj = Rcpp::NumericVector(nRows, Rcpp::NumericVector::get_na());
+						} else if (type == XlsxColumn::CellType::T_STRING_REF || type == XlsxColumn::CellType::T_STRING) {
+							robj = Rcpp::CharacterVector(nRows, Rcpp::CharacterVector::get_na());
+						} else if (type == XlsxColumn::CellType::T_BOOLEAN) {
+							robj = Rcpp::LogicalVector(nRows, Rcpp::LogicalVector::get_na());
+						} else if (type == XlsxColumn::CellType::T_DATE) {
+							robj = Rcpp::DatetimeVector(nRows, "UTC");
+							// fill with NAs, otherwise missing would be 1970-01-01
+							for (size_t i = 0; i < nRows; ++i) {
+								static_cast<Rcpp::DatetimeVector>(robj)[i] = Rcpp::DatetimeVector::get_na();
+							}
+						}
+						if (type != XlsxColumn::CellType::T_NONE) {
+							//lst[currentColumn] = robj;
+							//proxies[currentColumn] = robj;
+							if (proxies.size() < currentColumn) {
+								proxies.reserve(currentColumn + 1);
+								proxies.resize(currentColumn);
+								proxies.push_back(robj);
+							} else if (proxies.size() > currentColumn) {
+								proxies[currentColumn] = robj;
+							} else {
+								proxies.push_back(robj);
+							}
+							coltypes[currentColumn] = type;
+						}
+					}
+					if (coltypes[currentColumn] != XlsxColumn::CellType::T_NONE) {
+						const XlsxColumn::CellType col_type = coltypes[currentColumn];
+						const bool compatible = ((type == col_type)
+							|| (type == XlsxColumn::CellType::T_STRING_REF && col_type == XlsxColumn::CellType::T_STRING)
+							|| (type == XlsxColumn::CellType::T_STRING && col_type == XlsxColumn::CellType::T_STRING_REF));
+						if (compatible) {
+							Rcpp::RObject& robj = proxies[currentColumn];
+							const unsigned long i = currentRow - 1;
+							//std::cout << "Insert " << currentColumn << "/" << i << ": " << static_cast<int>(cell.type) << " vs " << static_cast<int>(coltypes[currentColumn]) << std::endl;
+							if (type == XlsxColumn::CellType::T_NUMERIC) {
+								static_cast<Rcpp::NumericVector>(robj)[i] = cell.data.real;
+							} else if (type == XlsxColumn::CellType::T_STRING_REF) {
+								const auto str = file.getString(cell.data.integer);
+								static_cast<Rcpp::CharacterVector>(robj)[i] = str;
+							} else if (type == XlsxColumn::CellType::T_STRING) {
+								const auto& str = file.getDynamicString(cell.data.integer);
+								static_cast<Rcpp::CharacterVector>(robj)[i] = Rf_mkCharCE(str.c_str(), CE_UTF8);
+							} else if (type == XlsxColumn::CellType::T_BOOLEAN) {
+								static_cast<Rcpp::LogicalVector>(robj)[i] = cell.data.boolean;
+							} else if (type == XlsxColumn::CellType::T_DATE) {
+								static_cast<Rcpp::DatetimeVector>(robj)[i] = cell.data.real;
+							}
+						}
+					}
+				}
+				++currentColumn;
+			}
+			sheet.mCells[ithread].pop_front();
+		}
+	}
+	Rcpp::List lst(proxies.size());
+	for (size_t i = 0; i < proxies.size(); ++i) {
+		if (coltypes[i] == XlsxColumn::CellType::T_NONE) {
+			lst[i] = Rcpp::NumericVector(nRows, Rcpp::NumericVector::get_na());
+		} else {
+			lst[i] = proxies[i];
+		}
+	}
+	Rcpp::DataFrame result(lst);
+	result.attr("names") = names;
+	return result;
+}
+
 // [[Rcpp::export]]
 Rcpp::DataFrame read_xlsx(const std::string path, SEXP sheet = R_NilValue, bool headers = true, int skip_rows = 0, int skip_columns = 0, const std::string method = "efficient", int num_threads = -1) {
 	// manually convert 'sheet' (instead of by Rcpp) to allow string & number input
@@ -124,6 +327,7 @@ Rcpp::DataFrame read_xlsx(const std::string path, SEXP sheet = R_NilValue, bool 
 		parallel = false;
 	}
 
+
 	XlsxFile file(path);
 	file.mParallelStrings = parallel;
 	file.mStringsConsecutive = (method == "fast");
@@ -148,5 +352,6 @@ Rcpp::DataFrame read_xlsx(const std::string path, SEXP sheet = R_NilValue, bool 
 		Rcpp::warning("There were errors while reading the file, please check output for consistency.");
 	}
 
-	return sheet_to_dataframe(file, fsheet);
+	return method == "efficient" ? cells_to_dataframe(file, fsheet) : sheet_to_dataframe(file, fsheet);
+	//return sheet_to_dataframe(file, fsheet);
 }

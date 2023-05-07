@@ -379,6 +379,10 @@ public:
         return mState == State::INSIDE || mState == State::END || mState == State::END_NAME;
     }
 
+    bool atStart() const {
+        return mState == State::START || mState == State::START_NAME || mState == State::START_ATTRIBUTE_NAME || mState == State::START_ATTRIBUTE_VALUE;
+    }
+
     bool completedStart() {
         const bool ret = mCompleted > 0;
         mCompleted = 0;
@@ -401,5 +405,14 @@ public:
 
     int getCloseLength() const {
         return mCloseLength;
+    }
+
+    void reset() {
+        mScan = -1;
+        mCurrentAttribute = -1;
+        mPrevCloseSlash = false;
+        mCloseLength = 0;
+        mState = State::OUTSIDE;
+        mCompleted = 0;
     }
 };

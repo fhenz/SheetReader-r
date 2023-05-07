@@ -56,7 +56,7 @@ public:
     bool isDate(unsigned long style) const;
     double toDate(double date) const;
     unsigned long long addDynamicString(const char* str);
-    const std::string& getDynamicString(const unsigned long long index);
+    const std::string& getDynamicString(const unsigned long long index) const;
 
     int getArchiveIndex(const std::string& path);
     XlsxSheet getSheet(const int id);
