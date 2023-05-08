@@ -5,7 +5,6 @@
 #include <set>
 
 #include "XlsxSheet.h"
-#include "libdeflate/lib/libdeflate.h"
 #include "parsing.h"
 
 XlsxFile::XlsxFile(const std::string archivePath)
@@ -16,7 +15,6 @@ XlsxFile::XlsxFile(const std::string archivePath)
     , mPathStyles("")
     , mDate1904(false)
     , mParallelStrings(false)
-    , mStringsConsecutive(false)
 {
     mFile = new mz_zip_archive;
     memset(mFile, 0, sizeof(*mFile));
@@ -359,17 +357,9 @@ void XlsxFile::parseSharedStrings() {
         }
     }
     if (mParallelStrings) {
-        if (mStringsConsecutive) {
-            mParallelStringFuture = std::async(std::launch::async, &XlsxFile::parseSharedStringsConsecutive, this);
-        } else {
-            mParallelStringFuture = std::async(std::launch::async, &XlsxFile::parseSharedStringsInterleaved, this);
-        }
+        mParallelStringFuture = std::async(std::launch::async, &XlsxFile::parseSharedStringsInterleaved, this);
     } else {
-        if (mStringsConsecutive) {
-            parseSharedStringsConsecutive();
-        } else {
-            parseSharedStringsInterleaved();
-        }
+        parseSharedStringsInterleaved();
     }
 }
 
@@ -393,10 +383,16 @@ double XlsxFile::toDate(double date) const {
     return (date * 86400) - (offset * 86400);;
 }
 
-unsigned long long XlsxFile::addDynamicString(const char* str) {
-    const unsigned long idx = mDynamicStrings.size();
+void XlsxFile::prepareDynamicStrings(const int numThreads) {
+# if defined(TARGET_R)
+    mDynamicStrings.resize(numThreads);
+#endif
+}
+
+unsigned long long XlsxFile::addDynamicString(const int threadId, const char* str) {
 #if defined(TARGET_R)
-    mDynamicStrings.push_back(str);
+    const unsigned long idx = mDynamicStrings[threadId].size();
+    mDynamicStrings[threadId].push_back(str);
 #elif defined(TARGET_PYTHON)
     //TODO:
 #else
@@ -405,12 +401,14 @@ unsigned long long XlsxFile::addDynamicString(const char* str) {
     return idx;
 }
 
-const std::string& XlsxFile::getDynamicString(const unsigned long long index) const {
-    return mDynamicStrings[index];
+const std::string& XlsxFile::getDynamicString(const int threadId, const unsigned long long index) const {
+#if defined(TARGET_R)
+    return mDynamicStrings[threadId][index];
+#endif
 }
 
 XlsxSheet XlsxFile::getSheet(const int id) {
-    if (id > 0 && id <= mSheetIndex.size()) {
+    if (id > 0 && id <= static_cast<int>(mSheetIndex.size())) {
         const int archiveIndex = fileIndex(mFile, std::get<3>(mSheetIndex[id - 1]).c_str());
         if (archiveIndex != -1) return XlsxSheet(*this, mFile, archiveIndex);
     }
@@ -426,125 +424,6 @@ XlsxSheet XlsxFile::getSheet(const std::string& name) {
         }
     }
     throw std::runtime_error("Unable to find specified sheet");
-}
-
-void XlsxFile::parseSharedStringsConsecutive() {
-    mz_zip_archive* file = mFileSharedStrings == nullptr ? mFile : mFileSharedStrings;
-    size_t fileOffset = 0;
-    size_t compSize = 0;
-    size_t uncompSize = 0;
-    if (!getFile(fileIndex(file, mPathSharedStrings.c_str()), fileOffset, compSize, uncompSize)) {
-        throw std::runtime_error("Failed to retrieve shared strings file");
-    }
-
-    unsigned char* readBuffer = new unsigned char[compSize];
-    const auto nread = file->m_pRead(file->m_pIO_opaque, fileOffset, readBuffer, compSize);
-    if (nread != compSize) {
-        delete[] readBuffer;
-        throw std::runtime_error("Failed to read shared strings file");
-    }
-
-    struct libdeflate_decompressor *decompressor = libdeflate_alloc_decompressor();
-
-    char* buffer = new char[uncompSize + 1];
-
-    const auto result = libdeflate_deflate_decompress(decompressor, readBuffer, compSize, buffer, uncompSize, nullptr);
-
-    libdeflate_free_decompressor(decompressor);
-
-    delete[] readBuffer;
-
-    if (result != 0) {
-        delete[] buffer;
-        throw std::runtime_error("Failed to decompress shared strings file");
-    }
-    buffer[uncompSize] = 0;
-
-    // State variables
-    constexpr size_t tBufferSize = 32768;
-    char tBuffer[tBufferSize];
-    size_t tBufferLength = 0;
-
-    size_t offset = 0;
-
-    ElementParser<1> sst("sst", {"uniqueCount"}, {AttributeType::INDEX});
-    ElementParser<0> si("si", {}, {});
-    ElementParser<0> t("t", {}, {});
-
-    unsigned long uniqueCount = 0;
-    unsigned long numSharedStrings = 0;
-
-    while (offset < uncompSize) {
-        const unsigned char current = buffer[offset];
-        ++offset;
-        
-        sst.process(current);
-        if (!sst.inside()) continue;
-        if (sst.completedStart()) {
-            if (sst.hasValue(0)) {
-                uniqueCount = static_cast<const IndexParser&>(sst.getAttribute(0)).getValue();
-#if defined(TARGET_R)
-                mSharedStrings = Rcpp::CharacterVector(uniqueCount);
-#elif defined(TARGET_PYTHON)
-                //TODO:
-#else
-                mSharedStrings.reserve(uniqueCount);
-#endif
-            }
-        }
-        bool in_si = si.inside();
-        si.process(current);
-        if (!in_si) continue;
-        bool in_t = t.inside();
-        t.process(current);
-        if (!in_t && t.inside()) continue;
-        
-        if (t.completed()) {
-            tBufferLength -= (t.getCloseLength() - 1);
-            tBuffer[tBufferLength] = 0;
-        }
-        if (si.completed()) {
-            if (uniqueCount > 0 && numSharedStrings >= uniqueCount) {
-                delete[] buffer;
-                throw std::runtime_error("Parsed more strings than allocated for");
-            }
-#if defined(TARGET_R)
-            if (uniqueCount == 0) {
-                // not pre-allocated, so dynamic resizing
-                if (numSharedStrings >= static_cast<unsigned long>(mSharedStrings.size())) {
-                    Rcpp::CharacterVector newStrings = Rcpp::CharacterVector(mSharedStrings.size() + (mSharedStrings.size() > 1 ? mSharedStrings.size() / 2 : 1));
-                    for (int i = 0; i < mSharedStrings.size(); ++i) {
-                        newStrings[i] = mSharedStrings[i];
-                    }
-                    mSharedStrings = newStrings;
-                }
-            }
-            unescape(tBuffer);
-            mSharedStrings[numSharedStrings++] = Rf_mkCharCE(tBuffer, CE_UTF8);
-#elif defined(TARGET_PYTHON)
-            //TODO:
-#else
-            //TODO:
-#endif
-            tBufferLength = 0;
-            tBuffer[0] = 0;
-            continue;
-        }
-        if (t.inside()) {
-            if (tBufferLength >= tBufferSize) {
-                delete[] buffer;
-                throw std::runtime_error("String exceeded allowed size");
-            } else {
-                tBuffer[tBufferLength++] = current;
-            }
-        }
-    }
-
-    if (uniqueCount > 0 && numSharedStrings != uniqueCount) {
-        throw std::runtime_error("Mismatch between expected and parsed strings");
-    }
-
-    delete[] buffer;
 }
 
 void XlsxFile::parseSharedStringsInterleaved() {

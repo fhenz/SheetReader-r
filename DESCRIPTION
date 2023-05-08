@@ -1,19 +1,17 @@
 Package: SheetReader
 Type: Package
 Title: Parse xlsx Files
-Version: 1.0.2
-Date: 2022-04-07
+Version: 1.1.0
+Date: 2023-05-08
 Authors@R: c(
     person("Felix", "Henze", email="felixhenze0@gmail.com", role=c("aut", "cre")),
     person("Rich", "Geldreich", role=c("ctb", "cph"), comment="Author of included miniz code"),
-    person("Eric", "Biggers", role=c("ctb", "cph"), comment="Author of included libdeflate code"),
     person("Daniel", "Lemire", role=c("ctb", "cph"), comment="Author of included fast_double_parser code")
   )
 Description: Uses C++ via the 'Rcpp' package to parse modern Excel files ('.xlsx').
     Memory usage is kept minimal by decompressing only parts of the file at a time,
     while employing multiple threads to achieve significant runtime reduction.
-    Uses <https://github.com/richgel999/miniz>, <https://github.com/ebiggers/libdeflate>,
-    and <https://github.com/lemire/fast_double_parser>.
+    Uses <https://github.com/richgel999/miniz> and <https://github.com/lemire/fast_double_parser>.
 License: MIT + file LICENSE
 Imports: Rcpp (>= 1.0.5)
 LinkingTo: Rcpp

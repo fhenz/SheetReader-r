@@ -1,5 +1,0 @@
-library(SheetReader)
-data <- read_xlsx(system.file("extdata", "multi-test.xlsx", package = "SheetReader"), method="fast")
-stopifnot(colnames(data) == c("Text", "Integer", "Real", "Date", "DateTime", "Boolean", "Formula", "Error", "Blank"))
-stopifnot(data[1, "Text"] == "Blabla")
-stopifnot(is.na(data[1, "Blank"]))

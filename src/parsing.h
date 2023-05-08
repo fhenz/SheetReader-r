@@ -107,34 +107,34 @@ public:
 };
 
 class TypeParser : public ValueParser {
-    XlsxColumn::CellType mType;
+    CellType mType;
 public:
     void process(const unsigned char character) {
-        if (mType == XlsxColumn::CellType::T_NONE) {
+        if (mType == CellType::T_NONE) {
             if (character == 'b') {
-                mType = XlsxColumn::CellType::T_BOOLEAN;
+                mType = CellType::T_BOOLEAN;
             } else if (character == 'd') {
-                mType = XlsxColumn::CellType::T_DATE;
+                mType = CellType::T_DATE;
             } else if (character == 'e') {
-                mType = XlsxColumn::CellType::T_ERROR;
+                mType = CellType::T_ERROR;
             } else if (character == 'n') {
-                mType = XlsxColumn::CellType::T_NUMERIC;
+                mType = CellType::T_NUMERIC;
             } else if (character == 's') {
-                mType = XlsxColumn::CellType::T_STRING_REF;
+                mType = CellType::T_STRING_REF;
             } else if (character == 'i') {
-                mType = XlsxColumn::CellType::T_STRING_INLINE;
+                mType = CellType::T_STRING_INLINE;
             }
-        } else if (mType == XlsxColumn::CellType::T_STRING_REF && character == 't') {
-            mType = XlsxColumn::CellType::T_STRING;
+        } else if (mType == CellType::T_STRING_REF && character == 't') {
+            mType = CellType::T_STRING;
         }
     }
 
-    XlsxColumn::CellType getValue() const {
+    CellType getValue() const {
         return mType;
     }
 
     void reset() {
-        mType = XlsxColumn::CellType::T_NONE;
+        mType = CellType::T_NONE;
     }
 };
 
