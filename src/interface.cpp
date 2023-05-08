@@ -4,6 +4,40 @@
 #include "XlsxFile.h"
 #include "XlsxSheet.h"
 
+std::string formatNumber(const double number) {
+	char buf[64];
+	sprintf(buf, "%lg", number);
+	return buf;
+}
+
+std::string formatDatetime(const double timestamp) {
+	char buf[64];
+	time_t t = static_cast<time_t>(std::floor(timestamp));
+	struct tm temp = *gmtime(&t); // localtime, not gmtime
+	size_t res = ::strftime(buf, 63, "%Y-%m-%d %H:%M:%S", &temp);
+	if (res <= 0) {
+		return std::string("");
+	} else {
+		return std::string(buf);
+	}
+}
+
+void coerceString(const XlsxFile& file, const int ithread, Rcpp::RObject& vector, const size_t index, const XlsxCell& value, const CellType valueType) {
+	if (valueType == CellType::T_NUMERIC) {
+		static_cast<Rcpp::CharacterVector>(vector)[index] = formatNumber(value.data.real);
+	} else if (valueType == CellType::T_STRING_REF) {
+		const auto str = file.getString(value.data.integer);
+		static_cast<Rcpp::CharacterVector>(vector)[index] = str;
+	} else if (valueType == CellType::T_STRING) {
+		const auto& str = file.getDynamicString(ithread, value.data.integer);
+		static_cast<Rcpp::CharacterVector>(vector)[index] = Rf_mkCharCE(str.c_str(), CE_UTF8);
+	} else if (valueType == CellType::T_BOOLEAN) {
+		static_cast<Rcpp::CharacterVector>(vector)[index] = value.data.boolean ? "TRUE" : "FALSE";
+	} else if (valueType == CellType::T_DATE) {
+		static_cast<Rcpp::CharacterVector>(vector)[index] = formatDatetime(value.data.real);
+	}
+}
+
 Rcpp::DataFrame cells_to_dataframe(const XlsxFile& file, XlsxSheet& sheet) {
 	size_t nColumns = sheet.mDimension.first;
 	size_t nRows = sheet.mDimension.second;
@@ -43,7 +77,7 @@ Rcpp::DataFrame cells_to_dataframe(const XlsxFile& file, XlsxSheet& sheet) {
 		headerCells.reserve(nColumns);
 	}
 	std::vector<CellType> coltypes(nColumns, CellType::T_NONE);
-	//if (sheet.mHeaders) nRows--;
+	std::vector<CellType> coerce(nColumns, CellType::T_NONE);
 
 	unsigned long currentColumn = 0;
 	long long currentRow = -1;
@@ -84,6 +118,7 @@ Rcpp::DataFrame cells_to_dataframe(const XlsxFile& file, XlsxSheet& sheet) {
 					// normal (non-header) cell
 					if (coltypes.size() <= adjustedColumn) {
 						coltypes.resize(adjustedColumn + 1, CellType::T_NONE);
+						coerce.resize(adjustedColumn + 1, CellType::T_NONE);
 					}
 					//std::cout << "coltypes " << adjustedColumn << " / " << coltypes.size() << std::endl;
 					if (coltypes[adjustedColumn] == CellType::T_NONE) {
@@ -119,9 +154,12 @@ Rcpp::DataFrame cells_to_dataframe(const XlsxFile& file, XlsxSheet& sheet) {
 						const bool compatible = ((type == col_type)
 							|| (type == CellType::T_STRING_REF && col_type == CellType::T_STRING)
 							|| (type == CellType::T_STRING && col_type == CellType::T_STRING_REF));
-						if (compatible) {
+						const unsigned long i = adjustedRow - sheet.mHeaders;
+						if (coerce[adjustedColumn] == CellType::T_STRING) {
 							Rcpp::RObject& robj = proxies[adjustedColumn];
-							const unsigned long i = adjustedRow - sheet.mHeaders;
+							coerceString(file, ithread, robj, i, cell, type);
+						} else if (compatible) {
+							Rcpp::RObject& robj = proxies[adjustedColumn];
 							if (type == CellType::T_NUMERIC) {
 								static_cast<Rcpp::NumericVector>(robj)[i] = cell.data.real;
 							} else if (type == CellType::T_STRING_REF) {
@@ -135,6 +173,27 @@ Rcpp::DataFrame cells_to_dataframe(const XlsxFile& file, XlsxSheet& sheet) {
 							} else if (type == CellType::T_DATE) {
 								static_cast<Rcpp::DatetimeVector>(robj)[i] = cell.data.real;
 							}
+						} else if (coerce[adjustedColumn] == CellType::T_NONE) {
+							coerce[adjustedColumn] = CellType::T_STRING;
+							if (col_type != CellType::T_STRING && col_type != CellType::T_STRING_REF) {
+								// convert existing
+								Rcpp::RObject& robj = proxies[adjustedColumn];
+								Rcpp::RObject newObj = Rcpp::CharacterVector(nRows, Rcpp::CharacterVector::get_na());
+								for (int i = 0; i < nRows; ++i) {
+									if (col_type == CellType::T_NUMERIC) {
+										if (Rcpp::NumericVector::is_na(static_cast<Rcpp::NumericVector>(robj)[i])) continue;
+										static_cast<Rcpp::CharacterVector>(newObj)[i] = formatNumber(static_cast<Rcpp::NumericVector>(robj)[i]);
+									} else if (col_type == CellType::T_BOOLEAN) {
+										if (Rcpp::LogicalVector::is_na(static_cast<Rcpp::LogicalVector>(robj)[i])) continue;
+										static_cast<Rcpp::CharacterVector>(newObj)[i] = static_cast<Rcpp::LogicalVector>(robj)[i] ? "TRUE" : "FALSE";
+									} else if (col_type == CellType::T_DATE) {
+										if (Rcpp::DatetimeVector::is_na(static_cast<Rcpp::DatetimeVector>(robj)[i])) continue;
+										static_cast<Rcpp::CharacterVector>(newObj)[i] = formatDatetime(static_cast<Rcpp::DatetimeVector>(robj)[i]);
+									}
+								}
+								proxies[adjustedColumn] = newObj;
+							}
+							coerceString(file, ithread, proxies[adjustedColumn], i, cell, type);
 						}
 					}
 				} else {

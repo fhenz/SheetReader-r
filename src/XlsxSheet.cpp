@@ -281,7 +281,6 @@ void XlsxSheet::interleavedFunc(size_t numThreads, const size_t threadId, std::a
             loadNext = false;
         }
 
-        if (offset >= bufferSize) std::cout << threadId << " read buffer overrun" << std::endl;
         const unsigned char current = buffers[currentReadBuffer % numBuffers][offset];
         ++offset;
 
