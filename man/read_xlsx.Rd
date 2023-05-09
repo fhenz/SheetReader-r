@@ -31,7 +31,6 @@ read_xlsx(
 
 \item{num_threads}{The number of threads to use for parsing.
     Will be automatically determined if not provided.
-    Note that the "efficient" method uses a minimum of 2 threads even if only 1 is specified.
 }
 }
 \value{

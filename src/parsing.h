@@ -6,6 +6,7 @@
 
 class ValueParser {
 public:
+    virtual ~ValueParser() {};
     virtual void process(const unsigned char character) = 0;
     virtual void reset() = 0;
 };
@@ -13,7 +14,7 @@ public:
 class IndexParser : public ValueParser {
     unsigned long mValue;
 public:
-    void process(const unsigned char character) {
+    void process(const unsigned char character) override {
         mValue = mValue * 10 + (character - '0');
     }
 
@@ -21,7 +22,7 @@ public:
         return mValue;
     }
 
-    void reset() {
+    void reset() override {
         mValue = 0;
     }
 };
@@ -32,7 +33,7 @@ class StringParser : public ValueParser {
     size_t mWrite;
     //TODO: additional dynamic storage
 public:
-    void process(const unsigned char character) {
+    void process(const unsigned char character) override {
         if (mWrite <= sStaticSize) {
             mStatic[mWrite++] = character;
         } else {
@@ -49,7 +50,7 @@ public:
         }
     }
 
-    void reset() {
+    void reset() override {
         mWrite = 0;
         mStatic[0] = 0;
         //TODO: dynamic
@@ -60,7 +61,7 @@ class LocationParser : public ValueParser {
     unsigned long mColumn;
     unsigned long mRow;
 public:
-    void process(const unsigned char character) {
+    void process(const unsigned char character) override {
         //TODO: prevent reading digits before alphabetic and alphabetic after digits?
         if (isalpha(character)) {
             mColumn = mColumn * 26 + (character - 64);
@@ -73,7 +74,7 @@ public:
         return std::pair<unsigned long, unsigned long>(mColumn, mRow);
     }
 
-    void reset() {
+    void reset() override {
         mColumn = 0;
         mRow = 0;
     }
@@ -85,7 +86,7 @@ class RangeParser : public ValueParser {
     bool mIsEnd;
 public:
 
-    void process(const unsigned char character) {
+    void process(const unsigned char character) override {
         if (character == ':') {
             mIsEnd = true;
         } else if (mIsEnd) {
@@ -99,7 +100,7 @@ public:
         return std::pair<std::pair<unsigned long, unsigned long>, std::pair<unsigned long, unsigned long>>(mStart.getValue(), mEnd.getValue());
     }
 
-    void reset() {
+    void reset() override {
         mStart.reset();
         mEnd.reset();
         mIsEnd = false;
@@ -109,7 +110,7 @@ public:
 class TypeParser : public ValueParser {
     CellType mType;
 public:
-    void process(const unsigned char character) {
+    void process(const unsigned char character) override {
         if (mType == CellType::T_NONE) {
             if (character == 'b') {
                 mType = CellType::T_BOOLEAN;
@@ -133,7 +134,7 @@ public:
         return mType;
     }
 
-    void reset() {
+    void reset() override {
         mType = CellType::T_NONE;
     }
 };

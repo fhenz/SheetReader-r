@@ -6,7 +6,7 @@
 
 std::string formatNumber(const double number) {
 	char buf[64];
-	sprintf(buf, "%lg", number);
+	snprintf(buf, 64, "%lg", number);
 	return buf;
 }
 
@@ -28,7 +28,7 @@ void coerceString(const XlsxFile& file, const int ithread, Rcpp::RObject& vector
 	} else if (valueType == CellType::T_STRING_REF) {
 		const auto str = file.getString(value.data.integer);
 		static_cast<Rcpp::CharacterVector>(vector)[index] = str;
-	} else if (valueType == CellType::T_STRING) {
+	} else if (valueType == CellType::T_STRING || valueType == CellType::T_STRING_INLINE) {
 		const auto& str = file.getDynamicString(ithread, value.data.integer);
 		static_cast<Rcpp::CharacterVector>(vector)[index] = Rf_mkCharCE(str.c_str(), CE_UTF8);
 	} else if (valueType == CellType::T_BOOLEAN) {
@@ -125,7 +125,7 @@ Rcpp::DataFrame cells_to_dataframe(const XlsxFile& file, XlsxSheet& sheet) {
 						Rcpp::RObject robj;
 						if (type == CellType::T_NUMERIC) {
 							robj = Rcpp::NumericVector(nRows, Rcpp::NumericVector::get_na());
-						} else if (type == CellType::T_STRING_REF || type == CellType::T_STRING) {
+						} else if (type == CellType::T_STRING_REF || type == CellType::T_STRING || type == CellType::T_STRING_INLINE) {
 							robj = Rcpp::CharacterVector(nRows, Rcpp::CharacterVector::get_na());
 						} else if (type == CellType::T_BOOLEAN) {
 							robj = Rcpp::LogicalVector(nRows, Rcpp::LogicalVector::get_na());
@@ -153,7 +153,11 @@ Rcpp::DataFrame cells_to_dataframe(const XlsxFile& file, XlsxSheet& sheet) {
 						const CellType col_type = coltypes[adjustedColumn];
 						const bool compatible = ((type == col_type)
 							|| (type == CellType::T_STRING_REF && col_type == CellType::T_STRING)
-							|| (type == CellType::T_STRING && col_type == CellType::T_STRING_REF));
+							|| (type == CellType::T_STRING_REF && col_type == CellType::T_STRING_INLINE)
+							|| (type == CellType::T_STRING && col_type == CellType::T_STRING_REF)
+							|| (type == CellType::T_STRING && col_type == CellType::T_STRING_INLINE)
+							|| (type == CellType::T_STRING_INLINE && col_type == CellType::T_STRING_REF)
+							|| (type == CellType::T_STRING_INLINE && col_type == CellType::T_STRING));
 						const unsigned long i = adjustedRow - sheet.mHeaders;
 						if (coerce[adjustedColumn] == CellType::T_STRING) {
 							Rcpp::RObject& robj = proxies[adjustedColumn];
@@ -165,7 +169,7 @@ Rcpp::DataFrame cells_to_dataframe(const XlsxFile& file, XlsxSheet& sheet) {
 							} else if (type == CellType::T_STRING_REF) {
 								const auto str = file.getString(cell.data.integer);
 								static_cast<Rcpp::CharacterVector>(robj)[i] = str;
-							} else if (type == CellType::T_STRING) {
+							} else if (type == CellType::T_STRING || type == CellType::T_STRING_INLINE) {
 								const auto& str = file.getDynamicString(ithread, cell.data.integer);
 								static_cast<Rcpp::CharacterVector>(robj)[i] = Rf_mkCharCE(str.c_str(), CE_UTF8);
 							} else if (type == CellType::T_BOOLEAN) {
@@ -175,11 +179,11 @@ Rcpp::DataFrame cells_to_dataframe(const XlsxFile& file, XlsxSheet& sheet) {
 							}
 						} else if (coerce[adjustedColumn] == CellType::T_NONE) {
 							coerce[adjustedColumn] = CellType::T_STRING;
-							if (col_type != CellType::T_STRING && col_type != CellType::T_STRING_REF) {
+							if (col_type != CellType::T_STRING && col_type != CellType::T_STRING_REF && col_type != CellType::T_STRING_INLINE) {
 								// convert existing
 								Rcpp::RObject& robj = proxies[adjustedColumn];
 								Rcpp::RObject newObj = Rcpp::CharacterVector(nRows, Rcpp::CharacterVector::get_na());
-								for (int i = 0; i < nRows; ++i) {
+								for (size_t i = 0; i < nRows; ++i) {
 									if (col_type == CellType::T_NUMERIC) {
 										if (Rcpp::NumericVector::is_na(static_cast<Rcpp::NumericVector>(robj)[i])) continue;
 										static_cast<Rcpp::CharacterVector>(newObj)[i] = formatNumber(static_cast<Rcpp::NumericVector>(robj)[i]);
@@ -227,7 +231,7 @@ Rcpp::DataFrame cells_to_dataframe(const XlsxFile& file, XlsxSheet& sheet) {
 				names[i] = cell.data.real;
 			} else if (type == CellType::T_STRING_REF) {
 				names[i] = file.getString(cell.data.integer);
-			} else if (type == CellType::T_STRING) {
+			} else if (type == CellType::T_STRING || type == CellType::T_STRING_INLINE) {
 				const auto& str = file.getDynamicString(std::get<2>(headerCells[i]), cell.data.integer);
 				names[i] = Rf_mkCharCE(str.c_str(), CE_UTF8);
 			} else if (type == CellType::T_BOOLEAN) {

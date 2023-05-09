@@ -1,4 +1,5 @@
 library(SheetReader)
+options(stringsAsFactors = FALSE)
 data <- read_xlsx(system.file("extdata", "multi-test.xlsx", package = "SheetReader"), sheet="escape")
 stopifnot(colnames(data) == c("Escape", "This"))
 stopifnot(data[1, "This"] == "&")

@@ -174,7 +174,7 @@ bool XlsxSheet::interleaved(const int skipRows, const int skipColumns, const int
     
     producerThread.join();
 
-    for (int i = 0; i < parseThreads.size(); ++i) {
+    for (size_t i = 0; i < parseThreads.size(); ++i) {
         parseThreads[i].join();
     }
 
@@ -204,6 +204,7 @@ void XlsxSheet::interleavedFunc(size_t numThreads, const size_t threadId, std::a
     ElementParser<1> row("row", {"r"}, {AttributeType::INDEX});
     ElementParser<3> c("c", {"r", "t", "s"}, {AttributeType::LOCATION, AttributeType::TYPE, AttributeType::INDEX});
     ElementParser<0> v("v", {}, {});
+    ElementParser<0> t("t", {}, {});
 
     bool loadNext = false;
     bool continueCell = false;
@@ -323,22 +324,31 @@ void XlsxSheet::interleavedFunc(size_t numThreads, const size_t threadId, std::a
         }
         if (!in_c && !(continueCell && c.outside())) continue;
         bool in_v = v.inside();
+        bool in_t = t.inside();
         v.process(current);
-        if (!in_v && v.inside()) continue;
+        t.process(current);
+        if (!in_v && v.inside()) {
+            cellValueLength = 0;
+            continue;
+        }
+        if (!in_t && t.inside()) {
+            cellValueLength = 0;
+            continue;
+        }
         
         if (c.completed()) {
             CellType cellType = CellType::T_NUMERIC;
             bool dateStyle = false;
             if (c.hasValue(0)) {
                 const std::pair<unsigned long, unsigned long> val = static_cast<const LocationParser&>(c.getAttribute(0)).getValue();
-                if (expectedColumn != val.first || expectedRow != val.second - 1) {
+                if (expectedColumn != static_cast<long long>(val.first) || expectedRow != static_cast<long long>(val.second) - 1) {
                     //std::cout << "Expectation mismatch: " << expectedColumn << " / " << expectedRow << ", " << val.first << " / " << val.second - 1 << std::endl;
                     locs.push_back(LocationInfo{static_cast<unsigned long>(cells.size()) - 1, static_cast<unsigned long>(cells.back().first.size()), val.first - 1, val.second - 1});
                     expectedColumn = val.first;
                     expectedRow = val.second - 1;
                 }
             }
-            if (expectedColumn <= mSkipColumns || expectedRow < mSkipRows) {
+            if (expectedColumn <= static_cast<long long>(mSkipColumns) || expectedRow < static_cast<long long>(mSkipRows)) {
                 cellValueLength = 0;
                 cellValueBuffer[0] = 0;
                 if (expectedColumn != -1) ++expectedColumn;
@@ -350,20 +360,14 @@ void XlsxSheet::interleavedFunc(size_t numThreads, const size_t threadId, std::a
             if (c.hasValue(1)) cellType = static_cast<const TypeParser&>(c.getAttribute(1)).getValue();
             if (c.hasValue(2)) dateStyle = mParentFile.isDate(static_cast<const IndexParser&>(c.getAttribute(2)).getValue());
 
-            if (cellType == CellType::T_STRING_INLINE) {
-                //TODO: inline strings are not in the v element, but in t
-                cellValueLength = 0;
-                cellValueBuffer[0] = 0;
-                continue;
-            }
-            if (cellValueLength == 0 || (static_cast<int>(cellValueLength) < v.getCloseLength())) {
+            if (cellValueLength == 0 || (cellType != CellType::T_STRING_INLINE && static_cast<int>(cellValueLength) < v.getCloseLength()) || (cellType == CellType::T_STRING_INLINE && static_cast<int>(cellValueLength) < t.getCloseLength())) {
                 // no value
                 cellValueLength = 0;
                 cellValueBuffer[0] = 0;
                 continue;
             }
 
-            cellValueBuffer[cellValueLength - v.getCloseLength() + 1] = 0;
+            cellValueBuffer[cellValueLength - (cellType != CellType::T_STRING_INLINE ? v.getCloseLength() : t.getCloseLength()) + 1] = 0;
             /*if (rowNumber == 0 || cellColumn == 0 || cellType == CellType::T_NONE) {
                 throw std::runtime_error("Error when parsing cell");
             }*/
@@ -386,7 +390,7 @@ void XlsxSheet::interleavedFunc(size_t numThreads, const size_t threadId, std::a
                     //placeCell(value, cellType, rowNumber, cellColumn);
                     cll.data.real = value;
                 }
-            } else if (cellType == CellType::T_STRING) {
+            } else if (cellType == CellType::T_STRING || cellType == CellType::T_STRING_INLINE) {
                 mParentFile.unescape(cellValueBuffer);
                 const unsigned long long stringIndex = mParentFile.addDynamicString(threadId, cellValueBuffer);
                 //placeCell(stringIndex, cellType, rowNumber, cellColumn);
@@ -412,7 +416,7 @@ void XlsxSheet::interleavedFunc(size_t numThreads, const size_t threadId, std::a
             loadNext = true;
             continue;
         }
-        if (v.inside()) {
+        if (v.inside() || t.inside()) {
             if (cellValueLength >= cellValueBufferSize) {
                 throw std::runtime_error("Exceeded cell value buffer size");
             }
@@ -420,6 +424,6 @@ void XlsxSheet::interleavedFunc(size_t numThreads, const size_t threadId, std::a
         }
     }
     } catch (const std::exception& e) {
-        std::cerr << "Parse exception: " << e.what() << std::endl;
+        Rcpp::warning("Parse exception: " + std::string(e.what()));
     }
 }
