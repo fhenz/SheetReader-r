@@ -54,5 +54,4 @@ If you use SheetReader in your academic project, please cite it with the followi
 ## Acknowledgements
 SheetReader includes and uses the following C/C++ libraries:  
 - [miniz](https://github.com/richgel999/miniz) for ZIP archive operations and decompression
-- [libdeflate](https://github.com/ebiggers/libdeflate) for optimized full-buffer decompression
 - [fast_double_parser](https://github.com/lemire/fast_double_parser) for optimized number parsing

@@ -386,25 +386,33 @@ double XlsxFile::toDate(double date) const {
 void XlsxFile::prepareDynamicStrings(const int numThreads) {
 # if defined(TARGET_R)
     mDynamicStrings.resize(numThreads);
+#else
+    mDynamicStrings.resize(numThreads);
 #endif
 }
 
 unsigned long long XlsxFile::addDynamicString(const int threadId, const char* str) {
-#if defined(TARGET_R)
-    const unsigned long idx = mDynamicStrings[threadId].size();
+//#if defined(TARGET_R)
+//    const unsigned long idx = mDynamicStrings[threadId].size();
+//    mDynamicStrings[threadId].push_back(str);
+//#elif defined(TARGET_PYTHON)
+    //TODO:
+//#else
+    // insert threadId as 16 most-significant bits in returned string index
+    const unsigned long long baseIndex = mDynamicStrings[threadId].size();
     mDynamicStrings[threadId].push_back(str);
-#elif defined(TARGET_PYTHON)
-    //TODO:
-#else
-    //TODO:
-#endif
+    const unsigned long long idx = baseIndex | ((static_cast<unsigned long long>(threadId) & 0xFFull) << 56);
+//#endif
     return idx;
 }
 
-const std::string& XlsxFile::getDynamicString(const int threadId, const unsigned long long index) const {
-#if defined(TARGET_R)
-    return mDynamicStrings[threadId][index];
-#endif
+const std::string& XlsxFile::getDynamicString(const unsigned long long index) const {
+//#if defined(TARGET_R)
+//    return mDynamicStrings[threadId][index];
+//#else
+    // decode embedded threadId
+    return mDynamicStrings[index >> 56][index & 0xFFFFFFFFFFFFFFull];
+//#endif
 }
 
 XlsxSheet XlsxFile::getSheet(const int id) {
@@ -514,7 +522,8 @@ void XlsxFile::parseSharedStringsInterleaved() {
 #elif defined(TARGET_PYTHON)
             //TODO:
 #else
-            //TODO:
+            unescape(tBuffer);
+            mSharedStrings.push_back(tBuffer);
 #endif
             tBufferLength = 0;
             tBuffer[0] = 0;

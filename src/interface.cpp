@@ -13,7 +13,7 @@ std::string formatNumber(const double number) {
 std::string formatDatetime(const double timestamp) {
 	char buf[64];
 	time_t t = static_cast<time_t>(std::floor(timestamp));
-	struct tm temp = *gmtime(&t); // localtime, not gmtime
+	struct tm temp = *gmtime(&t);
 	size_t res = ::strftime(buf, 63, "%Y-%m-%d %H:%M:%S", &temp);
 	if (res <= 0) {
 		return std::string("");
@@ -22,14 +22,14 @@ std::string formatDatetime(const double timestamp) {
 	}
 }
 
-void coerceString(const XlsxFile& file, const int ithread, Rcpp::RObject& vector, const size_t index, const XlsxCell& value, const CellType valueType) {
+void coerceString(const XlsxFile& file, Rcpp::RObject& vector, const size_t index, const XlsxCell& value, const CellType valueType) {
 	if (valueType == CellType::T_NUMERIC) {
 		static_cast<Rcpp::CharacterVector>(vector)[index] = formatNumber(value.data.real);
 	} else if (valueType == CellType::T_STRING_REF) {
 		const auto str = file.getString(value.data.integer);
 		static_cast<Rcpp::CharacterVector>(vector)[index] = str;
 	} else if (valueType == CellType::T_STRING || valueType == CellType::T_STRING_INLINE) {
-		const auto& str = file.getDynamicString(ithread, value.data.integer);
+		const auto& str = file.getDynamicString(value.data.integer);
 		static_cast<Rcpp::CharacterVector>(vector)[index] = Rf_mkCharCE(str.c_str(), CE_UTF8);
 	} else if (valueType == CellType::T_BOOLEAN) {
 		static_cast<Rcpp::CharacterVector>(vector)[index] = value.data.boolean ? "TRUE" : "FALSE";
@@ -42,24 +42,6 @@ Rcpp::DataFrame cells_to_dataframe(const XlsxFile& file, XlsxSheet& sheet) {
 	size_t nColumns = sheet.mDimension.first;
 	size_t nRows = sheet.mDimension.second;
 	//std::cout << "cells_to_dataframe " << nColumns << " / " << nRows << std::endl;
-	if (nRows == 0) {
-		// determine max rows (if dimension element not found), columns not needed
-		//TODO: this is actually wrong, we need to do it by chunk, not by thread (-> maintain iterator for every thread)
-		for (size_t ithread = 0; ithread < sheet.mCells.size(); ++ithread) {
-			size_t rowInfos = 0;
-			for (auto it = sheet.mLocationInfos[ithread].rbegin(); it != sheet.mLocationInfos[ithread].rend(); ++it) {
-				if (it->row == -1ul) {
-					rowInfos++;
-				} else {
-					//std::cout << "determine rows (" << ithread << "): " << it->row << " + " << rowInfos << " > " << nRows << std::endl;
-					if (it->row + rowInfos > nRows) nRows = it->row + rowInfos;
-					break;
-				}
-			}
-		}
-		// at this point nRows is actually the last cell row, which is 0-indexed so +1
-		nRows++;
-	}
 	//std::cout << "rows: " << nRows << " - " << sheet.mHeaders << " - " << sheet.mSkipRows << " => " << (nRows - sheet.mHeaders - sheet.mSkipRows) << std::endl;
 	nRows = nRows - sheet.mHeaders - sheet.mSkipRows;
 	nColumns = nColumns - sheet.mSkipColumns;
@@ -71,7 +53,7 @@ Rcpp::DataFrame cells_to_dataframe(const XlsxFile& file, XlsxSheet& sheet) {
 	std::vector<Rcpp::RObject> proxies;
 	// we only reserve and not resize here in case of erroneous <dimension> element (sometimes up to max col/max row even if empty)
 	// real size determined during data insertion
-	std::vector<std::tuple<XlsxCell, CellType, size_t>> headerCells;
+	std::vector<std::tuple<XlsxCell, CellType>> headerCells;
 	if (nColumns > 0) {
 		proxies.reserve(nColumns);
 		headerCells.reserve(nColumns);
@@ -89,8 +71,7 @@ Rcpp::DataFrame cells_to_dataframe(const XlsxFile& file, XlsxSheet& sheet) {
 				break;
 			}
 			//std::cout << buf << ", " << ithread << "/" << sheet.mCells.size() << std::endl;
-			const std::vector<XlsxCell> cells = sheet.mCells[ithread].front().first;
-			const std::vector<CellType> types = sheet.mCells[ithread].front().second;
+			const std::vector<XlsxCell> cells = sheet.mCells[ithread].front();
 			const std::vector<LocationInfo>& locs = sheet.mLocationInfos[ithread];
 			size_t& currentLoc = currentLocs[ithread];
 
@@ -110,7 +91,7 @@ Rcpp::DataFrame cells_to_dataframe(const XlsxFile& file, XlsxSheet& sheet) {
 				const auto adjustedColumn = currentColumn;
 				const auto adjustedRow = currentRow - sheet.mSkipRows;
 				const XlsxCell& cell = cells[icell];
-				const CellType type = types[icell];
+				const CellType type = cell.type;
 
 				//std::cout << adjustedColumn << "/" << adjustedRow << std::endl;
 
@@ -161,7 +142,7 @@ Rcpp::DataFrame cells_to_dataframe(const XlsxFile& file, XlsxSheet& sheet) {
 						const unsigned long i = adjustedRow - sheet.mHeaders;
 						if (coerce[adjustedColumn] == CellType::T_STRING) {
 							Rcpp::RObject& robj = proxies[adjustedColumn];
-							coerceString(file, ithread, robj, i, cell, type);
+							coerceString(file, robj, i, cell, type);
 						} else if (compatible) {
 							Rcpp::RObject& robj = proxies[adjustedColumn];
 							if (type == CellType::T_NUMERIC) {
@@ -170,7 +151,7 @@ Rcpp::DataFrame cells_to_dataframe(const XlsxFile& file, XlsxSheet& sheet) {
 								const auto str = file.getString(cell.data.integer);
 								static_cast<Rcpp::CharacterVector>(robj)[i] = str;
 							} else if (type == CellType::T_STRING || type == CellType::T_STRING_INLINE) {
-								const auto& str = file.getDynamicString(ithread, cell.data.integer);
+								const auto& str = file.getDynamicString(cell.data.integer);
 								static_cast<Rcpp::CharacterVector>(robj)[i] = Rf_mkCharCE(str.c_str(), CE_UTF8);
 							} else if (type == CellType::T_BOOLEAN) {
 								static_cast<Rcpp::LogicalVector>(robj)[i] = cell.data.boolean;
@@ -197,7 +178,7 @@ Rcpp::DataFrame cells_to_dataframe(const XlsxFile& file, XlsxSheet& sheet) {
 								}
 								proxies[adjustedColumn] = newObj;
 							}
-							coerceString(file, ithread, proxies[adjustedColumn], i, cell, type);
+							coerceString(file, proxies[adjustedColumn], i, cell, type);
 						}
 					}
 				} else {
@@ -205,7 +186,7 @@ Rcpp::DataFrame cells_to_dataframe(const XlsxFile& file, XlsxSheet& sheet) {
 					if (headerCells.size() <= adjustedColumn) {
 						headerCells.resize(adjustedColumn + 1);
 					}
-					headerCells[adjustedColumn] = std::make_tuple(cell, type, ithread);
+					headerCells[adjustedColumn] = std::make_tuple(cell, type);
 				}
 				++currentColumn;
 			}
@@ -232,7 +213,7 @@ Rcpp::DataFrame cells_to_dataframe(const XlsxFile& file, XlsxSheet& sheet) {
 			} else if (type == CellType::T_STRING_REF) {
 				names[i] = file.getString(cell.data.integer);
 			} else if (type == CellType::T_STRING || type == CellType::T_STRING_INLINE) {
-				const auto& str = file.getDynamicString(std::get<2>(headerCells[i]), cell.data.integer);
+				const auto& str = file.getDynamicString(cell.data.integer);
 				names[i] = Rf_mkCharCE(str.c_str(), CE_UTF8);
 			} else if (type == CellType::T_BOOLEAN) {
 				names[i] = cell.data.boolean;
@@ -248,8 +229,90 @@ Rcpp::DataFrame cells_to_dataframe(const XlsxFile& file, XlsxSheet& sheet) {
 	return result;
 }
 
+void iterate(const std::string path, const std::string sheet = "", bool headers = true, int skip_rows = 0, int skip_columns = 0, int num_threads = -1) {
+	if (skip_rows < 0) skip_rows = 0;
+	if (skip_columns < 0) skip_columns = 0;
+
+	bool parallel = true;
+	if (num_threads == -1) {
+		// automatically decide number of threads
+		num_threads = std::thread::hardware_concurrency();
+		if (num_threads <= 0) {
+			num_threads = 1;
+		}
+		// limit impact on user machine
+		if (num_threads > 6 && num_threads <= 10) num_threads = 6;
+		// really diminishing returns with higher number of threads
+		if (num_threads > 10) num_threads = 10;
+	}
+	if (num_threads <= 1) {
+		num_threads = 1;
+		parallel = false;
+	}
+	try {
+		XlsxFile file(path);
+		file.mParallelStrings = parallel;
+		file.parseSharedStrings();
+
+		XlsxSheet fsheet = sheet == "" ? file.getSheet(1) : file.getSheet(sheet);
+		fsheet.mHeaders = headers;
+		// if parallel we need threads for string parsing
+		// for interleaved, both sheet & strings need additional thread for decompression (meaning min is 2)
+		int act_num_threads = num_threads - parallel * 2 - (num_threads > 1);
+		if (act_num_threads <= 0) act_num_threads = 1;
+		bool success = fsheet.interleaved(skip_rows, skip_columns, act_num_threads);
+		file.finalize();
+		if (!success) {
+			std::cout << "Warning: There were errors while reading the file, please check output for consistency." << std::endl;
+		}
+
+		std::cout << "Columns: " << fsheet.mDimension.first << " / Rows: " << fsheet.mDimension.second << std::endl;
+		// get sheet rows
+		while (true) {
+			// pair contains (row number, cells)
+			const std::pair<size_t, std::vector<XlsxCell>> row = fsheet.nextRow();
+			// cell vector is empty if no rows remaining
+			if (row.second.size() == 0) break;
+			if (row.first == 0) {
+				// first row, likely header / column names
+				continue;
+			}
+			const std::vector<XlsxCell>& cells = row.second;
+			for (size_t i = 0; i < cells.size(); ++i) {
+				// cell has .type (CellType) and .data (union of double, unsigned long long, bool)
+				const XlsxCell& cell = cells[i];
+				
+				if (cell.type == CellType::T_NUMERIC) {
+					// simple numeric value, could be integer or double (Excel differentiates by style)
+					const double value = cell.data.real;
+				} else if (cell.type == CellType::T_STRING_REF) {
+					// string value (from the global string table)
+					const auto value = file.getString(cell.data.integer);
+				} else if (cell.type == CellType::T_STRING || cell.type == CellType::T_STRING_INLINE) {
+					// string value (specified inline)
+					const std::string& value = file.getDynamicString(cell.data.integer);
+				} else if (cell.type == CellType::T_BOOLEAN) {
+					// boolean value
+					const bool value = cell.data.boolean;
+				} else if (cell.type == CellType::T_DATE) {
+					// datetime value, already as unix timestamp (seconds since 1970), Excel stores as number of days since 1900
+					const double value = cell.data.real;
+					//const std::string value = formatDatetime(cell.data.real);
+				} else {
+					//NULL (T_NONE)
+				}
+			}
+		}
+	} catch (const std::exception& e) {
+		std::cout << "Failed to read file: " << e.what() << std::endl;
+	}
+}
+
 // [[Rcpp::export]]
 Rcpp::DataFrame read_xlsx(const std::string path, SEXP sheet = R_NilValue, bool headers = true, int skip_rows = 0, int skip_columns = 0, int num_threads = -1) {
+	//iterate(path, "", headers, skip_rows, skip_columns, num_threads);
+	//return R_NilValue;
+
 	// manually convert 'sheet' (instead of by Rcpp) to allow string & number input
 	std::string sheetName;
 	int sheetNumber = 0;

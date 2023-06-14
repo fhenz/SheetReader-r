@@ -3,10 +3,13 @@
 #include <string>
 #include <vector>
 #include <future>
+#include <set>
 
 #include "miniz/miniz.h"
 #if defined(TARGET_R)
 #include <Rcpp.h>
+#else
+#include <iostream>
 #endif
 
 #include "XlsxSheet.h"
@@ -36,9 +39,9 @@ public:
     std::vector<PyObject*> mSharedStrings;
 #   define STRING_TYPE PyObject*
 #else
-    std::vector<char*> mSharedStrings;
-    std::vector<char*> mDynamicStrings;
-#   define STRING_TYPE char*
+    std::vector<std::string> mSharedStrings;
+    std::vector<std::vector<std::string>> mDynamicStrings;
+#   define STRING_TYPE std::string
 #endif
     std::set<unsigned long> mDateStyles;
 
@@ -55,7 +58,7 @@ public:
     double toDate(double date) const;
     void prepareDynamicStrings(const int numThreads);
     unsigned long long addDynamicString(const int threadId, const char* str);
-    const std::string& getDynamicString(const int threadId, const unsigned long long index) const;
+    const std::string& getDynamicString(const unsigned long long index) const;
 
     int getArchiveIndex(const std::string& path);
     XlsxSheet getSheet(const int id);

@@ -11,6 +11,12 @@
 #include "fast_double_parser/fast_double_parser.h"
 #include "parsing.h"
 
+#if defined(TARGET_R)
+#define WARN(x) Rcpp::warning(x)
+#else
+#define WARN(x) std::cout << x << std::endl
+#endif
+
 unsigned long strtoul(const char* start, const unsigned long length) {
     unsigned long val = 0;
     unsigned long offset = 0;
@@ -75,20 +81,31 @@ bool XlsxSheet::interleaved(const int skipRows, const int skipColumns, const int
 
     std::vector<std::atomic_size_t> readIndexes(numThreads);
     std::atomic_size_t writeIndex(numThreads - 1); // gets incremented at the start to num_threads
+    std::atomic_bool terminate(false);
+    std::atomic_bool finishedWriting(false);
+
     std::vector<std::thread> parseThreads;
     parseThreads.reserve(numThreads - 1);
+    std::vector<ParseState<numBuffers>> parseStates;
+    parseStates.reserve(numThreads);
 
     mCells.resize(numThreads);
     mLocationInfos.resize(numThreads);
     for (int i = 0; i < numThreads; ++i) {
         readIndexes[i].store(static_cast<size_t>(i));
+        parseStates.push_back(ParseState<numBuffers>{
+            static_cast<size_t>(i),
+            buffers,
+            tbufferSize,
+            writeIndex,
+            finishedWriting,
+            readIndexes,
+            terminate
+        });
     }
     mParentFile.prepareDynamicStrings(numThreads);
 
-    std::atomic_bool terminate(false);
-
     const int archiveIndex = mArchiveIndex;
-    std::atomic_bool finishedWriting(false);
     bool success = true;
     auto producerFunc = [&]() {
         mz_zip_reader_extract_iter_state* state = mz_zip_reader_extract_iter_new(mFile, archiveIndex, 0);
@@ -145,7 +162,7 @@ bool XlsxSheet::interleaved(const int skipRows, const int skipColumns, const int
     try {
         producerThread = std::thread(producerFunc);
     } catch (std::system_error& e) {
-        Rcpp::warning("Failed to create producer thread");
+        WARN("Failed to create producer thread");
         for (size_t i = 0; i < numBuffers; ++i) {
             delete[] buffers[i];
         }
@@ -154,10 +171,11 @@ bool XlsxSheet::interleaved(const int skipRows, const int skipColumns, const int
 
     for (int i = 0; i < numThreads - 1; ++i) {
         try {
-            parseThreads.push_back(std::thread(&XlsxSheet::interleavedFunc<numBuffers>, this, numThreads, i, std::ref(buffers), tbufferSize, std::cref(writeIndex), std::cref(finishedWriting), std::ref(readIndexes), std::cref(terminate)));
+            //parseThreads.push_back(std::thread(&XlsxSheet::interleavedFunc<numBuffers>, this, numThreads, i, std::ref(buffers), tbufferSize, std::cref(writeIndex), std::cref(finishedWriting), std::ref(readIndexes), std::cref(terminate), std::ref(maxDim[i])));
+            parseThreads.push_back(std::thread(&XlsxSheet::interleavedFunc<numBuffers>, this, numThreads, std::ref(parseStates[i])));
         } catch (const std::system_error& e) {
             // failed to create thread, kill already created threads (including producer)
-            Rcpp::warning("Failed to create parse thread");
+            WARN("Failed to create parse thread");
             terminate.store(true);
             for (int j = i - 1; j >= 0; --j) {
                 parseThreads[j].join();
@@ -170,12 +188,18 @@ bool XlsxSheet::interleaved(const int skipRows, const int skipColumns, const int
         }
     }
 
-    interleavedFunc<numBuffers>(numThreads, numThreads - 1, buffers, tbufferSize, writeIndex, finishedWriting, readIndexes, terminate);
+    //interleavedFunc<numBuffers>(numThreads, numThreads - 1, buffers, tbufferSize, writeIndex, finishedWriting, readIndexes, terminate, maxDim[numThreads - 1]);
+    interleavedFunc<numBuffers>(numThreads, parseStates[numThreads - 1]);
     
     producerThread.join();
 
     for (size_t i = 0; i < parseThreads.size(); ++i) {
         parseThreads[i].join();
+    }
+
+    for (int i = 0; i < numThreads; ++i) {
+        if (mDimension.first < parseStates[i].maxCell.first) mDimension.first = parseStates[i].maxCell.first;
+        if (mDimension.second < parseStates[i].maxCell.second) mDimension.second = parseStates[i].maxCell.second;
     }
 
     for (size_t i = 0; i < numBuffers; ++i) {
@@ -189,14 +213,14 @@ bool XlsxSheet::interleaved(const int skipRows, const int skipColumns, const int
 }
 
 template<std::size_t numBuffers>
-void XlsxSheet::interleavedFunc(size_t numThreads, const size_t threadId, std::array<unsigned char*, numBuffers>& buffers, const size_t bufferSize, const std::atomic_size_t& writeIndex, const std::atomic_bool& finishedWriting, std::vector<std::atomic_size_t>& readIndexes, const std::atomic_bool& terminate) {
+void XlsxSheet::interleavedFunc(size_t numThreads, ParseState<numBuffers>& parseState) {
     constexpr size_t cellValueBufferSize = BUFFER_SIZE; // Max number of characters in cell is 32767
     char cellValueBuffer[cellValueBufferSize];
     size_t cellValueLength = 0;
 
     size_t offset = 0;
 
-    std::atomic_size_t& readIndex = readIndexes[threadId];
+    std::atomic_size_t& readIndex = parseState.readIndexes[parseState.threadId];
     size_t currentReadBuffer = readIndex.load();
 
     ElementParser<1> dimension("dimension", {"ref"}, {AttributeType::RANGE});
@@ -212,13 +236,13 @@ void XlsxSheet::interleavedFunc(size_t numThreads, const size_t threadId, std::a
 
     long long expectedRow = -1;
     long long expectedColumn = -1;
-    std::list<std::pair<std::vector<XlsxCell>, std::vector<CellType>>>& cells = mCells[threadId];
-    std::vector<LocationInfo>& locs = mLocationInfos[threadId];
+    std::list<std::vector<XlsxCell>>& cells = mCells[parseState.threadId];
+    std::vector<LocationInfo>& locs = mLocationInfos[parseState.threadId];
 
     try {
-    while (readIndex.load() < writeIndex.load() || !finishedWriting.load() || terminate.load()) {
-        if (terminate.load()) return;
-        if (offset >= bufferSize || buffers[currentReadBuffer % numBuffers][offset] == '\0' || loadNext) {
+    while (readIndex.load() < parseState.writeIndex.load() || !parseState.finishedWriting.load() || parseState.terminate.load()) {
+        if (parseState.terminate.load()) return;
+        if (offset >= parseState.bufferSize || parseState.buffers[currentReadBuffer % numBuffers][offset] == '\0' || loadNext) {
             const size_t prevBuffer = currentReadBuffer;
             const bool cellExtension = !c.outside();
             const bool rowExtension = row.atStart();
@@ -255,9 +279,8 @@ void XlsxSheet::interleavedFunc(size_t numThreads, const size_t threadId, std::a
                 currentReadBuffer = readIndex.load() + numThreads - (continueCell || continueRow);
                 continueCell = false;
                 continueRow = false;
-                cells.emplace_back(std::vector<XlsxCell>(), std::vector<CellType>());
-                cells.back().first.reserve(800); //TODO: dynamically based on average already parsed?
-                cells.back().second.reserve(800);
+                cells.emplace_back(std::vector<XlsxCell>());
+                cells.back().reserve(800); //TODO: dynamically based on average already parsed?
                 expectedRow = -1;
                 expectedColumn = -1;
             } 
@@ -265,16 +288,16 @@ void XlsxSheet::interleavedFunc(size_t numThreads, const size_t threadId, std::a
             // if a parse extension was long enough (unrealistic) or only 1 thread was specified (more likely)
             // we could end up at the same buffer we are already at
             if (currentReadBuffer != prevBuffer) {
-                while (!finishedWriting.load() && currentReadBuffer >= writeIndex.load()) {
-                    if (terminate.load()) return;
+                while (!parseState.finishedWriting.load() && currentReadBuffer >= parseState.writeIndex.load()) {
+                    if (parseState.terminate.load()) return;
                     std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 }
-                if (finishedWriting.load() && currentReadBuffer > writeIndex.load()) {
-                    currentReadBuffer = writeIndex.load();
+                if (parseState.finishedWriting.load() && currentReadBuffer > parseState.writeIndex.load()) {
+                    currentReadBuffer = parseState.writeIndex.load();
                 }
-                if (currentReadBuffer > writeIndex.load() && finishedWriting.load()) break;
+                if (currentReadBuffer > parseState.writeIndex.load() && parseState.finishedWriting.load()) break;
                 readIndex.store(currentReadBuffer);
-                if (buffers[currentReadBuffer % numBuffers][0] == '\0') {
+                if (parseState.buffers[currentReadBuffer % numBuffers][0] == '\0') {
                     continue;
                 }
                 offset = 0;
@@ -282,7 +305,7 @@ void XlsxSheet::interleavedFunc(size_t numThreads, const size_t threadId, std::a
             loadNext = false;
         }
 
-        const unsigned char current = buffers[currentReadBuffer % numBuffers][offset];
+        const unsigned char current = parseState.buffers[currentReadBuffer % numBuffers][offset];
         ++offset;
 
         if (mDimension.first == 0) {
@@ -300,7 +323,7 @@ void XlsxSheet::interleavedFunc(size_t numThreads, const size_t threadId, std::a
         if (row.completedStart() && row.inside()) {
             unsigned long r = row.hasValue(0) ? static_cast<const IndexParser&>(row.getAttribute(0)).getValue() - 1 : -1;
             //std::cout << "Row completed: " << r << std::endl;
-            locs.push_back(LocationInfo{static_cast<unsigned long>(cells.size()) - 1, static_cast<unsigned long>(cells.back().first.size()), 0, r});
+            locs.push_back(LocationInfo{static_cast<unsigned long>(cells.size()) - 1, static_cast<unsigned long>(cells.back().size()), 0, r});
             if (row.hasValue(0)) {
                 //locs.push_back(LocationInfo{cells.size() - 1, cells.back().size(), 0, r});
                 expectedRow = r;
@@ -343,7 +366,7 @@ void XlsxSheet::interleavedFunc(size_t numThreads, const size_t threadId, std::a
                 const std::pair<unsigned long, unsigned long> val = static_cast<const LocationParser&>(c.getAttribute(0)).getValue();
                 if (expectedColumn != static_cast<long long>(val.first) || expectedRow != static_cast<long long>(val.second) - 1) {
                     //std::cout << "Expectation mismatch: " << expectedColumn << " / " << expectedRow << ", " << val.first << " / " << val.second - 1 << std::endl;
-                    locs.push_back(LocationInfo{static_cast<unsigned long>(cells.size()) - 1, static_cast<unsigned long>(cells.back().first.size()), val.first - 1, val.second - 1});
+                    locs.push_back(LocationInfo{static_cast<unsigned long>(cells.size()) - 1, static_cast<unsigned long>(cells.back().size()), val.first - 1, val.second - 1});
                     expectedColumn = val.first;
                     expectedRow = val.second - 1;
                 }
@@ -392,7 +415,7 @@ void XlsxSheet::interleavedFunc(size_t numThreads, const size_t threadId, std::a
                 }
             } else if (cellType == CellType::T_STRING || cellType == CellType::T_STRING_INLINE) {
                 mParentFile.unescape(cellValueBuffer);
-                const unsigned long long stringIndex = mParentFile.addDynamicString(threadId, cellValueBuffer);
+                const unsigned long long stringIndex = mParentFile.addDynamicString(parseState.threadId, cellValueBuffer);
                 //placeCell(stringIndex, cellType, rowNumber, cellColumn);
                 cll.data.integer = stringIndex;
             } else {
@@ -400,10 +423,13 @@ void XlsxSheet::interleavedFunc(size_t numThreads, const size_t threadId, std::a
                 //placeCell(value, cellType, rowNumber, cellColumn);
                 cll.data.integer = value;
             }
-            cells.back().first.push_back(cll);
-            cells.back().second.push_back(cellType);
+            cll.type = cellType;
+            cells.back().push_back(cll);
             cellValueLength = 0;
             cellValueBuffer[0] = 0;
+            
+            parseState.maxCell.first = expectedColumn;
+            parseState.maxCell.second = expectedRow;
             if (expectedColumn != -1) ++expectedColumn;
             if (continueCell) {
                 //std::cout << "Ended cell extension " << currentReadBuffer << " at " << offset << std::endl;
@@ -424,6 +450,73 @@ void XlsxSheet::interleavedFunc(size_t numThreads, const size_t threadId, std::a
         }
     }
     } catch (const std::exception& e) {
-        Rcpp::warning("Parse exception: " + std::string(e.what()));
+        WARN("Parse exception: " + std::string(e.what()));
     }
+}
+
+std::pair<size_t, std::vector<XlsxCell>> XlsxSheet::nextRow() {
+    if (mCells.size() == 0) {
+        std::cout << "Iteration stop 1" << std::endl;
+        return std::make_pair(0, std::vector<XlsxCell>());
+    }
+    if (currentLocs.size() == 0) {
+        maxBuffers = mCells[0].size();
+        currentBuffer = 0;
+        currentThread = 0;
+        currentCell = 0;
+        currentColumn = 0;
+        currentRow = -1;
+        currentLocs = std::vector<size_t>(mCells.size(), 0);
+    }
+    std::vector<XlsxCell> currentValues;
+    currentValues.resize(mDimension.first - mSkipColumns, XlsxCell());
+	for (; currentBuffer < maxBuffers; ++currentBuffer) {
+		for (; currentThread < mCells.size(); ++currentThread) {
+			if (mCells[currentThread].size() == 0) {
+                //std::cout << "Iteration stop 2" << std::endl;
+                return std::make_pair(0, std::vector<XlsxCell>());
+			}
+			//std::cout << currentBuffer << " / " << maxBuffers << ", " << currentThread << "/" << mCells.size() << ", " << currentCell << std::endl;
+			const std::vector<XlsxCell> cells = mCells[currentThread].front();
+			const std::vector<LocationInfo>& locs = mLocationInfos[currentThread];
+			size_t& currentLoc = currentLocs[currentThread];
+
+			// currentCell <= cells.size() because there might be location info after last cell
+			for (; currentCell <= cells.size(); ++currentCell) {
+				while (currentLoc < locs.size() && locs[currentLoc].buffer == currentBuffer && locs[currentLoc].cell == currentCell) {
+					//std::cout << "loc " << currentLoc << "/" << locs.size() << ": " << locs[currentLoc].buffer << " vs " << currentBuffer << ", " << locs[currentLoc].cell << " vs " << currentCell << " (" << locs[currentLoc].column << "/" << locs[currentLoc].row << ")" << std::endl;
+					currentColumn = locs[currentLoc].column;
+					if (locs[currentLoc].row == -1ul) {
+						++currentRow;
+					    ++currentLoc;
+                        //std::cout << "DEBUG1 " << currentRow << std::endl;
+                        if (currentRow > 0) return std::pair<size_t, std::vector<XlsxCell>>(currentRow - 1, currentValues);
+					} else if (locs[currentLoc].row > currentRow) {
+                        const size_t nextRow = locs[currentLoc].row;
+                        //std::cout << "nextRow, currentRow: " << nextRow << ", " << currentRow << std::endl;
+                        if (nextRow > currentRow + 1) {
+                            ++currentRow;
+                        } else {
+                            currentRow = locs[currentLoc].row;
+                            ++currentLoc;
+                        }
+                        //std::cout << "DEBUG2 " << currentRow << std::endl;
+                        if (currentRow > 0) return std::pair<size_t, std::vector<XlsxCell>>(currentRow - 1, currentValues);
+					} else {
+                        ++currentLoc;
+                    }
+				}
+                //std::cout << "currentCell " << currentCell << " / " << cells.size() << ", " << currentColumn << std::endl;
+				if (currentCell >= cells.size()) break;
+				const auto adjustedColumn = currentColumn;
+                ++currentColumn;
+				const XlsxCell& cell = cells[currentCell];
+                currentValues[adjustedColumn] = cell;
+            }
+            mCells[currentThread].pop_front();
+            currentCell = 0;
+        }
+        currentThread = 0;
+    }
+    return std::pair<size_t, std::vector<XlsxCell>>(currentRow, currentValues);
 }
