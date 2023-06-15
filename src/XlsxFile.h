@@ -65,5 +65,5 @@ public:
 
     bool isDate(const int style) const;
     const STRING_TYPE getString(const long long index) const;
-    void unescape(char* buffer) const;
+    void unescape(char* buffer, const size_t buffer_size) const;
 };
