@@ -456,7 +456,7 @@ void XlsxSheet::interleavedFunc(size_t numThreads, ParseState<numBuffers>& parse
 
 std::pair<size_t, std::vector<XlsxCell>> XlsxSheet::nextRow() {
     if (mCells.size() == 0) {
-        std::cout << "Iteration stop 1" << std::endl;
+        //std::cout << "Iteration stop 1" << std::endl;
         return std::make_pair(0, std::vector<XlsxCell>());
     }
     if (currentLocs.size() == 0) {
@@ -474,7 +474,8 @@ std::pair<size_t, std::vector<XlsxCell>> XlsxSheet::nextRow() {
 		for (; currentThread < mCells.size(); ++currentThread) {
 			if (mCells[currentThread].size() == 0) {
                 //std::cout << "Iteration stop 2" << std::endl;
-                return std::make_pair(0, std::vector<XlsxCell>());
+                currentBuffer = maxBuffers;
+                return std::pair<size_t, std::vector<XlsxCell>>(currentRow - 1, currentValues);
 			}
 			//std::cout << currentBuffer << " / " << maxBuffers << ", " << currentThread << "/" << mCells.size() << ", " << currentCell << std::endl;
 			const std::vector<XlsxCell> cells = mCells[currentThread].front();
@@ -518,5 +519,5 @@ std::pair<size_t, std::vector<XlsxCell>> XlsxSheet::nextRow() {
         }
         currentThread = 0;
     }
-    return std::pair<size_t, std::vector<XlsxCell>>(currentRow, currentValues);
+    return std::pair<size_t, std::vector<XlsxCell>>(0, {});
 }

@@ -522,8 +522,9 @@ void XlsxFile::parseSharedStringsInterleaved() {
 #elif defined(TARGET_PYTHON)
             //TODO:
 #else
-            unescape(tBuffer);
+            unescape(tBuffer, tBufferLength);
             mSharedStrings.push_back(tBuffer);
+            numSharedStrings = mSharedStrings.size();
 #endif
             tBufferLength = 0;
             tBuffer[0] = 0;
@@ -539,7 +540,7 @@ void XlsxFile::parseSharedStringsInterleaved() {
     }
 
     if (uniqueCount > 0 && numSharedStrings != uniqueCount) {
-        throw std::runtime_error("Mismatch between expected and parsed strings");
+        throw std::runtime_error("Mismatch between expected and parsed strings (" + std::to_string(uniqueCount) + " vs " + std::to_string(numSharedStrings) + ")");
     }
 
     if (!mz_zip_reader_extract_iter_free(state)) {
