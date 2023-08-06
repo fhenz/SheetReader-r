@@ -414,7 +414,7 @@ void XlsxSheet::interleavedFunc(size_t numThreads, ParseState<numBuffers>& parse
                     cll.data.real = value;
                 }
             } else if (cellType == CellType::T_STRING || cellType == CellType::T_STRING_INLINE) {
-                mParentFile.unescape(cellValueBuffer);
+                mParentFile.unescape(cellValueBuffer, cellValueLength);
                 const unsigned long long stringIndex = mParentFile.addDynamicString(parseState.threadId, cellValueBuffer);
                 //placeCell(stringIndex, cellType, rowNumber, cellColumn);
                 cll.data.integer = stringIndex;

@@ -517,7 +517,7 @@ void XlsxFile::parseSharedStringsInterleaved() {
                     mSharedStrings = newStrings;
                 }
             }
-            unescape(tBuffer);
+            unescape(tBuffer, tBufferLength);
             mSharedStrings[numSharedStrings++] = Rf_mkCharCE(tBuffer, CE_UTF8);
 #elif defined(TARGET_PYTHON)
             //TODO:
@@ -603,31 +603,72 @@ const STRING_TYPE XlsxFile::getString(const long long index) const {
     return mSharedStrings[index];
 }
 
-void XlsxFile::unescape(char* buffer) const {
+void XlsxFile::unescape(char* buffer, const size_t buffer_size) const {
     size_t replaced = 0;
     size_t i = 0;
-    while (buffer[i] != '\0') {
+    while (buffer[i] != '\0' && i < buffer_size) {
         if (buffer[i] == '&') {
-            if (strncmp(&buffer[i+1], "amp;", 4) == 0) {
+            if (i+4 < buffer_size && strncmp(&buffer[i+1], "amp;", 4) == 0) {
                 buffer[i-replaced] = '&';
                 replaced += 4;
                 i += 4;
-            } else if (strncmp(&buffer[i+1], "apos;", 5) == 0) {
+            } else if (i+5 < buffer_size && strncmp(&buffer[i+1], "apos;", 5) == 0) {
                 buffer[i-replaced] = '\'';
                 replaced += 5;
                 i += 5;
-            } else if (strncmp(&buffer[i+1], "quot;", 5) == 0) {
+            } else if (i+5 < buffer_size && strncmp(&buffer[i+1], "quot;", 5) == 0) {
                 buffer[i-replaced] = '"';
                 replaced += 5;
                 i += 5;
-            } else if (strncmp(&buffer[i+1], "gt;", 3) == 0) {
+            } else if (i+3 < buffer_size && strncmp(&buffer[i+1], "gt;", 3) == 0) {
                 buffer[i-replaced] = '>';
                 replaced += 3;
                 i += 3;
-            } else if (strncmp(&buffer[i+1], "lt;", 3) == 0) {
+            } else if (i+3 < buffer_size && strncmp(&buffer[i+1], "lt;", 3) == 0) {
                 buffer[i-replaced] = '<';
                 replaced += 3;
                 i += 3;
+            } else if (i+3 < buffer_size && buffer[i+1] == '#') {
+                // numeric character reference
+                bool hex = buffer[i+2] == 'x';
+                size_t j = 2 + hex;
+                size_t num = 0;
+                // convert escape string to codepoint
+                while (i+j < buffer_size && buffer[i+j] != '\0') {
+                    if (buffer[i+j] == ';') break;
+                    if (hex) {
+                        if ((buffer[i+j] >= '0' && buffer[i+j] <= '9')) {
+                            num = (num * 16) + (buffer[i+j] - '0');
+                        } else if (buffer[i+j] >= 'A' && buffer[i+j] <= 'F') {
+                            num = (num * 16) + 10 + (buffer[i+j] - 'A');
+                        } else if (buffer[i+j] >= 'a' && buffer[i+j] <= 'f') {
+                            num = (num * 16) + 10 + (buffer[i+j] - 'a');
+                        }
+                    } else {
+                        num = (num * 10) + (buffer[i+j] - '0');
+                    }
+                    j++;
+                }
+                //std::cout << "Numeric character reference: " << num << std::endl;
+                // convert codepoint to utf-8
+                if (num < 0x80) {
+                    buffer[i-replaced] = static_cast<unsigned char>(num);
+                } else if (num < 0x800) {
+                    buffer[i-replaced] = static_cast<unsigned char>(num >> 6) | 0xc0;
+                    buffer[i-replaced+1] = static_cast<unsigned char>(num & 0x3f) | 0x80;
+                } else if (num < 0x10000) {
+                    buffer[i-replaced] = static_cast<unsigned char>(num >> 12) | 0xe0;
+                    buffer[i-replaced+1] = static_cast<unsigned char>((num >> 6) & 0x3f) | 0x80;
+                    buffer[i-replaced+2] = static_cast<unsigned char>(num & 0x3f) | 0x80;
+                    //std::cout << "3 bytes: " << static_cast<unsigned int>(static_cast<unsigned char>(num >> 12) | 0xe0) << " " << static_cast<unsigned int>(static_cast<unsigned char>((num >> 6) & 0x3f) | 0x80) << " " << static_cast<unsigned int>(static_cast<unsigned char>(num & 0x3f) | 0x80) << std::endl;
+                } else {
+                    buffer[i-replaced] = static_cast<unsigned char>(num >> 18) | 0xf0;
+                    buffer[i-replaced+1] = static_cast<unsigned char>((num >> 12) & 0x3f) | 0x80;
+                    buffer[i-replaced+2] = static_cast<unsigned char>((num >> 6) & 0x3f) | 0x80;
+                    buffer[i-replaced+3] = static_cast<unsigned char>(num & 0x3f) | 0x80;
+                }
+                replaced += j - (num >= 0x80) - (num >= 0x800) - (num >= 0x10000);
+                i += j;
             }
         } else {
             buffer[i-replaced] = buffer[i];
