@@ -136,7 +136,7 @@ void XlsxFile::parseWorkbook() {
                 }
                 mSheetIndex.emplace_back(
                     static_cast<const IndexParser&>(sheet.getAttribute(1)).getValue(),
-                    static_cast<const StringParser&>(sheet.getAttribute(0)).getValue(),
+                    unescape(static_cast<const StringParser&>(sheet.getAttribute(0)).getValue()),
                     static_cast<const StringParser&>(sheet.getAttribute(2)).getValue(),
                     ""
                 );
@@ -301,7 +301,7 @@ void XlsxFile::parseStyles() {
                     continue;
                 }
 
-                const std::string format = static_cast<const StringParser&>(numFmt.getAttribute(1)).getValue();
+                const std::string format = unescape(static_cast<const StringParser&>(numFmt.getAttribute(1)).getValue());
                 //TODO: this should probably be done in a better way
                 for (size_t i = 0; i < format.length(); ++i) {
                     const char c = format.at(i);
@@ -678,4 +678,20 @@ void XlsxFile::unescape(char* buffer, const size_t buffer_size) const {
         ++i;
     }
     buffer[i - replaced] = '\0';
+}
+
+std::string XlsxFile::unescape(const std::string& string) const {
+    char staticBuf[256]{};
+    if (string.length() < 256) {
+        string.copy(staticBuf, 256);
+        unescape(staticBuf, 256);
+        return std::string(staticBuf);
+    } else {
+        char* dynamicBuf = new char[string.length() + 1];
+        string.copy(dynamicBuf, string.length());
+        unescape(dynamicBuf, string.length() + 1);
+        const std::string unescaped(dynamicBuf);
+        delete[] dynamicBuf;
+        return unescaped;
+    }
 }

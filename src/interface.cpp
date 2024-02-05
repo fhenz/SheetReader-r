@@ -348,19 +348,19 @@ void iterate(const std::string path, const std::string sheet = "", bool headers 
 				
 				if (cell.type == CellType::T_NUMERIC) {
 					// simple numeric value, could be integer or double (Excel differentiates by style)
-					const double value = cell.data.real;
+					//const double value = cell.data.real;
 				} else if (cell.type == CellType::T_STRING_REF) {
 					// string value (from the global string table)
-					const auto value = file.getString(cell.data.integer);
+					//const auto value = file.getString(cell.data.integer);
 				} else if (cell.type == CellType::T_STRING || cell.type == CellType::T_STRING_INLINE) {
 					// string value (specified inline)
-					const std::string& value = file.getDynamicString(-1, cell.data.integer);
+					//const std::string& value = file.getDynamicString(-1, cell.data.integer);
 				} else if (cell.type == CellType::T_BOOLEAN) {
 					// boolean value
-					const bool value = cell.data.boolean;
+					//const bool value = cell.data.boolean;
 				} else if (cell.type == CellType::T_DATE) {
 					// datetime value, already as unix timestamp (seconds since 1970), Excel stores as number of days since 1900
-					const double value = cell.data.real;
+					//const double value = cell.data.real;
 					//const std::string value = formatDatetime(cell.data.real);
 				} else {
 					//NULL (T_NONE)
