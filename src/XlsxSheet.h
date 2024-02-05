@@ -37,10 +37,25 @@ struct XlsxCell {
         unsigned long long integer;
         bool boolean;
     } data;
+    CellType type;
+
+    XlsxCell() : type(CellType::T_NONE) {}
 };
 
 class XlsxFile;
 class XlsxSheet {
+private:
+    template<std::size_t num_buffers>
+    struct ParseState {
+        const size_t threadId;
+        std::array<unsigned char*, num_buffers>& buffers;
+        const size_t bufferSize;
+        const std::atomic_size_t& writeIndex;
+        const std::atomic_bool& finishedWriting;
+        std::vector<std::atomic_size_t>& readIndexes;
+        const std::atomic_bool& terminate;
+        std::pair<unsigned long, unsigned long> maxCell;
+    };
 public:
     unsigned long mSkipRows = 0;
     unsigned long mSkipColumns = 0;
@@ -50,7 +65,7 @@ public:
     mz_zip_archive* mFile;
     int mArchiveIndex;
 
-    std::vector<std::list<std::pair<std::vector<XlsxCell>, std::vector<CellType>>>> mCells;
+    std::vector<std::list<std::vector<XlsxCell>>> mCells;
     std::vector<std::vector<LocationInfo>> mLocationInfos;
 
     bool mHeaders;
@@ -62,5 +77,17 @@ public:
     
     bool interleaved(const int skipRows, const int skipColumns, const int numThreads);
     template<std::size_t num_buffers>
-    void interleavedFunc(size_t numThreads, const size_t threadId, std::array<unsigned char*, num_buffers>& buffers, const size_t bufferSize, const std::atomic_size_t& writeIndex, const std::atomic_bool& finishedWriting, std::vector<std::atomic_size_t>& readIndexes, const std::atomic_bool& terminate);
+    void interleavedFunc(size_t numThreads, ParseState<num_buffers>& parseState);
+
+    // for iteration
+    std::pair<size_t, std::vector<XlsxCell>> nextRow();
+private:
+    // iteration state data
+    size_t maxBuffers;
+    size_t currentBuffer;
+    size_t currentThread;
+    size_t currentCell;
+    unsigned long currentColumn;
+    long long currentRow;
+    std::vector<size_t> currentLocs;
 };

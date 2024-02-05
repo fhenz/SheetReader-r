@@ -42,24 +42,6 @@ Rcpp::DataFrame cells_to_dataframe(const XlsxFile& file, XlsxSheet& sheet) {
 	size_t nColumns = sheet.mDimension.first;
 	size_t nRows = sheet.mDimension.second;
 	//std::cout << "cells_to_dataframe " << nColumns << " / " << nRows << std::endl;
-	if (nRows == 0) {
-		// determine max rows (if dimension element not found), columns not needed
-		//TODO: this is actually wrong, we need to do it by chunk, not by thread (-> maintain iterator for every thread)
-		for (size_t ithread = 0; ithread < sheet.mCells.size(); ++ithread) {
-			size_t rowInfos = 0;
-			for (auto it = sheet.mLocationInfos[ithread].rbegin(); it != sheet.mLocationInfos[ithread].rend(); ++it) {
-				if (it->row == -1ul) {
-					rowInfos++;
-				} else {
-					//std::cout << "determine rows (" << ithread << "): " << it->row << " + " << rowInfos << " > " << nRows << std::endl;
-					if (it->row + rowInfos > nRows) nRows = it->row + rowInfos;
-					break;
-				}
-			}
-		}
-		// at this point nRows is actually the last cell row, which is 0-indexed so +1
-		nRows++;
-	}
 	//std::cout << "rows: " << nRows << " - " << sheet.mHeaders << " - " << sheet.mSkipRows << " => " << (nRows - sheet.mHeaders - sheet.mSkipRows) << std::endl;
 	nRows = nRows - sheet.mHeaders - sheet.mSkipRows;
 	nColumns = nColumns - sheet.mSkipColumns;
@@ -89,8 +71,7 @@ Rcpp::DataFrame cells_to_dataframe(const XlsxFile& file, XlsxSheet& sheet) {
 				break;
 			}
 			//std::cout << buf << ", " << ithread << "/" << sheet.mCells.size() << std::endl;
-			const std::vector<XlsxCell> cells = sheet.mCells[ithread].front().first;
-			const std::vector<CellType> types = sheet.mCells[ithread].front().second;
+			const std::vector<XlsxCell> cells = sheet.mCells[ithread].front();
 			const std::vector<LocationInfo>& locs = sheet.mLocationInfos[ithread];
 			size_t& currentLoc = currentLocs[ithread];
 
@@ -110,7 +91,7 @@ Rcpp::DataFrame cells_to_dataframe(const XlsxFile& file, XlsxSheet& sheet) {
 				const auto adjustedColumn = currentColumn;
 				const auto adjustedRow = currentRow - sheet.mSkipRows;
 				const XlsxCell& cell = cells[icell];
-				const CellType type = types[icell];
+				const CellType type = cell.type;
 
 				//std::cout << adjustedColumn << "/" << adjustedRow << std::endl;
 
@@ -309,4 +290,84 @@ Rcpp::DataFrame read_xlsx(const std::string path, SEXP sheet = R_NilValue, bool 
 		Rcpp::stop("Failed to read file: " + std::string(e.what()));
 	}
 	return R_NilValue;
+}
+
+// not for R interface
+void iterate(const std::string path, const std::string sheet = "", bool headers = true, int skip_rows = 0, int skip_columns = 0, int num_threads = -1) {
+	if (skip_rows < 0) skip_rows = 0;
+	if (skip_columns < 0) skip_columns = 0;
+
+	bool parallel = true;
+	if (num_threads == -1) {
+		// automatically decide number of threads
+		num_threads = std::thread::hardware_concurrency();
+		if (num_threads <= 0) {
+			num_threads = 1;
+		}
+		// limit impact on user machine
+		if (num_threads > 6 && num_threads <= 10) num_threads = 6;
+		// really diminishing returns with higher number of threads
+		if (num_threads > 10) num_threads = 10;
+	}
+	if (num_threads <= 1) {
+		num_threads = 1;
+		parallel = false;
+	}
+	try {
+		XlsxFile file(path);
+		file.mParallelStrings = parallel;
+		file.parseSharedStrings();
+
+		XlsxSheet fsheet = sheet == "" ? file.getSheet(1) : file.getSheet(sheet);
+		fsheet.mHeaders = headers;
+		// if parallel we need threads for string parsing
+		// for interleaved, both sheet & strings need additional thread for decompression (meaning min is 2)
+		int act_num_threads = num_threads - parallel * 2 - (num_threads > 1);
+		if (act_num_threads <= 0) act_num_threads = 1;
+		bool success = fsheet.interleaved(skip_rows, skip_columns, act_num_threads);
+		file.finalize();
+		if (!success) {
+			std::cout << "Warning: There were errors while reading the file, please check output for consistency." << std::endl;
+		}
+
+		std::cout << "Columns: " << fsheet.mDimension.first << " / Rows: " << fsheet.mDimension.second << std::endl;
+		// get sheet rows
+		while (true) {
+			// pair contains (row number, cells)
+			const std::pair<size_t, std::vector<XlsxCell>> row = fsheet.nextRow();
+			// cell vector is empty if no rows remaining
+			if (row.second.size() == 0) break;
+			if (row.first == 0 && headers) {
+				//TODO: first row & headers flag
+				continue;
+			}
+			const std::vector<XlsxCell>& cells = row.second;
+			for (size_t i = 0; i < cells.size(); ++i) {
+				// cell has .type (CellType) and .data (union of double, unsigned long long, bool)
+				const XlsxCell& cell = cells[i];
+				
+				if (cell.type == CellType::T_NUMERIC) {
+					// simple numeric value, could be integer or double (Excel differentiates by style)
+					const double value = cell.data.real;
+				} else if (cell.type == CellType::T_STRING_REF) {
+					// string value (from the global string table)
+					const auto value = file.getString(cell.data.integer);
+				} else if (cell.type == CellType::T_STRING || cell.type == CellType::T_STRING_INLINE) {
+					// string value (specified inline)
+					const std::string& value = file.getDynamicString(-1, cell.data.integer);
+				} else if (cell.type == CellType::T_BOOLEAN) {
+					// boolean value
+					const bool value = cell.data.boolean;
+				} else if (cell.type == CellType::T_DATE) {
+					// datetime value, already as unix timestamp (seconds since 1970), Excel stores as number of days since 1900
+					const double value = cell.data.real;
+					//const std::string value = formatDatetime(cell.data.real);
+				} else {
+					//NULL (T_NONE)
+				}
+			}
+		}
+	} catch (const std::exception& e) {
+		std::cout << "Failed to read file: " << e.what() << std::endl;
+	}
 }

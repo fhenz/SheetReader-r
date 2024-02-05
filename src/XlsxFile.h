@@ -36,9 +36,9 @@ public:
     std::vector<PyObject*> mSharedStrings;
 #   define STRING_TYPE PyObject*
 #else
-    std::vector<char*> mSharedStrings;
-    std::vector<char*> mDynamicStrings;
-#   define STRING_TYPE char*
+    std::vector<std::string> mSharedStrings;
+    std::vector<std::vector<std::string>> mDynamicStrings;
+#   define STRING_TYPE std::string
 #endif
     std::set<unsigned long> mDateStyles;
 

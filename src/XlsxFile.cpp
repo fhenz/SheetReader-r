@@ -386,6 +386,8 @@ double XlsxFile::toDate(double date) const {
 void XlsxFile::prepareDynamicStrings(const int numThreads) {
 # if defined(TARGET_R)
     mDynamicStrings.resize(numThreads);
+#else
+    mDynamicStrings.resize(numThreads);
 #endif
 }
 
@@ -396,7 +398,10 @@ unsigned long long XlsxFile::addDynamicString(const int threadId, const char* st
 #elif defined(TARGET_PYTHON)
     //TODO:
 #else
-    //TODO:
+    // insert threadId as 16 most-significant bits in returned string index
+    const unsigned long long baseIndex = mDynamicStrings[threadId].size();
+    mDynamicStrings[threadId].push_back(str);
+    const unsigned long long idx = baseIndex | ((static_cast<unsigned long long>(threadId) & 0xFFull) << 56);
 #endif
     return idx;
 }
@@ -404,6 +409,10 @@ unsigned long long XlsxFile::addDynamicString(const int threadId, const char* st
 const std::string& XlsxFile::getDynamicString(const int threadId, const unsigned long long index) const {
 #if defined(TARGET_R)
     return mDynamicStrings[threadId][index];
+#else
+    if (threadId >= 0) return mDynamicStrings[threadId][index & 0xFFFFFFFFFFFFFFull];
+    // decode embedded threadId
+    return mDynamicStrings[index >> 56][index & 0xFFFFFFFFFFFFFFull];
 #endif
 }
 
@@ -514,7 +523,9 @@ void XlsxFile::parseSharedStringsInterleaved() {
 #elif defined(TARGET_PYTHON)
             //TODO:
 #else
-            //TODO:
+            unescape(tBuffer, tBufferLength);
+            mSharedStrings.push_back(tBuffer);
+            numSharedStrings = mSharedStrings.size();
 #endif
             tBufferLength = 0;
             tBuffer[0] = 0;
@@ -530,7 +541,7 @@ void XlsxFile::parseSharedStringsInterleaved() {
     }
 
     if (uniqueCount > 0 && numSharedStrings != uniqueCount) {
-        throw std::runtime_error("Mismatch between expected and parsed strings");
+        throw std::runtime_error("Mismatch between expected and parsed strings (" + std::to_string(uniqueCount) + " vs " + std::to_string(numSharedStrings) + ")");
     }
 
     if (!mz_zip_reader_extract_iter_free(state)) {
