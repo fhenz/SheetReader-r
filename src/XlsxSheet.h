@@ -3,6 +3,7 @@
 #include <string>
 #include <map>
 #include <atomic>
+#include <mutex>
 #include <list>
 #include <vector>
 
@@ -21,7 +22,9 @@ enum class CellType : unsigned char {
     T_STRING_INLINE = 4,
     T_BOOLEAN = 5,
     T_ERROR = 6,
-    T_DATE = 7
+    T_DATE = 7,
+
+    T_SKIP = 8
 };
 
 struct LocationInfo {
@@ -53,8 +56,10 @@ private:
         const std::atomic_size_t& writeIndex;
         const std::atomic_bool& finishedWriting;
         std::vector<std::atomic_size_t>& readIndexes;
-        const std::atomic_bool& terminate;
+        std::atomic_bool& terminate;
         std::pair<unsigned long, unsigned long> maxCell;
+        std::mutex& headerMutex;
+        std::atomic_int& headerDone;
     };
 public:
     unsigned long mSkipRows = 0;
@@ -74,6 +79,8 @@ public:
     XlsxSheet(XlsxSheet&& sheet);
 
     XlsxSheet(XlsxFile& parentFile, mz_zip_archive* file, int archiveIndex);
+
+    void specifyTypes(std::vector<CellType> colTypesByIndex, std::map<std::string, CellType> colTypesByName);
     
     bool interleaved(const int skipRows, const int skipColumns, const int numThreads);
     template<std::size_t num_buffers>
@@ -81,7 +88,12 @@ public:
 
     // for iteration
     std::pair<size_t, std::vector<XlsxCell>> nextRow();
+    
+    std::vector<CellType> colTypesByIndex;
 private:
+    bool specifiedTypes;
+    std::map<std::string, CellType> colTypesByName;
+
     // iteration state data
     size_t maxBuffers;
     size_t currentBuffer;

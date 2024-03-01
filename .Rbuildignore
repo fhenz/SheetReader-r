@@ -3,3 +3,5 @@
 ^testing$
 ^benchmarking$
 ^README\.md$
+^src/iterate.cpp$
+^.*\.o$

@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <future>
+#include <atomic>
 
 #include "miniz/miniz.h"
 #if defined(TARGET_R)
@@ -27,6 +28,7 @@ public:
     bool mParallelStrings;
     std::future<void> mParallelStringFuture;
 
+    std::atomic_llong stringCount;
 #if defined(TARGET_R)
     Rcpp::CharacterVector mSharedStrings;
     std::vector<std::vector<std::string>> mDynamicStrings;

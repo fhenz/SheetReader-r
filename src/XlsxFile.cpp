@@ -439,11 +439,13 @@ void XlsxFile::parseSharedStringsInterleaved() {
     mz_zip_archive* file = mFileSharedStrings == nullptr ? mFile : mFileSharedStrings;
     const int relIndex = fileIndex(file, mPathSharedStrings.c_str());
     if (relIndex < 0) {
+        stringCount.store(-1);
         throw std::runtime_error("Failed to retrieve shared strings file");
     }
 
     mz_zip_reader_extract_iter_state* state = mz_zip_reader_extract_iter_new(file, relIndex, 0);
     if (!state) {
+        stringCount.store(-1);
         throw std::runtime_error("Failed to initialize reader state for shared strings");
     }
 
@@ -462,6 +464,7 @@ void XlsxFile::parseSharedStringsInterleaved() {
 
     unsigned long uniqueCount = 0;
     unsigned long numSharedStrings = 0;
+    stringCount.store(0);
 
     while (true) {
         if (offset >= read) {
@@ -469,6 +472,7 @@ void XlsxFile::parseSharedStringsInterleaved() {
             read = mz_zip_reader_extract_iter_read(state, buffer, bufferSize, err);
             if (state->status < 0) {
                 mz_zip_reader_extract_iter_free(state);
+                stringCount.store(-1);
                 throw std::runtime_error("Error while decompressing shared strings");
             }
             if (read == 0) break;
@@ -505,6 +509,7 @@ void XlsxFile::parseSharedStringsInterleaved() {
         if (si.completed()) {
             if (uniqueCount > 0 && numSharedStrings >= uniqueCount) {
                 mz_zip_reader_extract_iter_free(state);
+                stringCount.store(-1);
                 throw std::runtime_error("Parsed more strings than allocated for");
             }
 #if defined(TARGET_R)
@@ -526,6 +531,7 @@ void XlsxFile::parseSharedStringsInterleaved() {
             unescape(tBuffer, tBufferLength);
             mSharedStrings.push_back(tBuffer);
             numSharedStrings = mSharedStrings.size();
+            stringCount.fetch_add(1);
 #endif
             tBufferLength = 0;
             tBuffer[0] = 0;
@@ -533,12 +539,14 @@ void XlsxFile::parseSharedStringsInterleaved() {
         }
         if (t.inside()) {
             if (tBufferLength >= tBufferSize) {
+                stringCount.store(-1);
                 throw std::runtime_error("String exceeded allowed size");
             } else {
                 tBuffer[tBufferLength++] = current;
             }
         }
     }
+    stringCount.store(-1);
 
     if (uniqueCount > 0 && numSharedStrings != uniqueCount) {
         throw std::runtime_error("Mismatch between expected and parsed strings (" + std::to_string(uniqueCount) + " vs " + std::to_string(numSharedStrings) + ")");
@@ -602,6 +610,7 @@ const STRING_TYPE XlsxFile::getString(const long long index) const {
     if (index < 0 || index >= mSharedStrings.size()) {
         throw std::runtime_error("String index out of bounds");
     }
+    while (stringCount.load() <= index && stringCount.load() >= 0) continue;
     return mSharedStrings[index];
 }
 

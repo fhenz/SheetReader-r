@@ -1,8 +1,8 @@
 Package: SheetReader
 Type: Package
 Title: Parse xlsx Files
-Version: 1.1.2
-Date: 2023-05-09
+Version: 1.2.0
+Date: 2024-03-01
 Authors@R: c(
     person("Felix", "Henze", email="felixhenze0@gmail.com", role=c("aut", "cre")),
     person("Rich", "Geldreich", role=c("ctb", "cph"), comment="Author of included miniz code"),

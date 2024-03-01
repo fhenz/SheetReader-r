@@ -13,7 +13,8 @@ read_xlsx(
     headers = TRUE,
     skip_rows = 0,
     skip_columns = 0,
-    num_threads = -1
+    num_threads = -1,
+    col_types = NULL
 )
 }
 \arguments{
@@ -32,6 +33,12 @@ read_xlsx(
 \item{num_threads}{The number of threads to use for parsing.
     Will be automatically determined if not provided.
 }
+\item{col_types}{A named or unnamed character vector containing one of:
+"guess", "logical", "numeric", "date", "text". If unnamed, the types are assigned by column index
+(after \code{skip_columns} is applied). If named, \code{headers} must also be true and the types are
+assigned by column header value.
+    By default will guess the column type based on the first non-empty cell.
+}
 }
 \value{
     data.frame
@@ -46,4 +53,8 @@ head(df1)
 # Read the "encoding" sheet, skipping 1 row and not using the next row as column names
 df2 <- read_xlsx(exampleFile, sheet = "encoding", headers = FALSE, skip_rows = 1)
 head(df2)
+
+# Coerce the column with header "Integer" as text
+df3 <- read_xlsx(exampleFile, sheet = 1, headers = TRUE, col_types=c("Integer"="text"))
+head(df3)
 }

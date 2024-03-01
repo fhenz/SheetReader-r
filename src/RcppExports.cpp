@@ -11,8 +11,8 @@ Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
 // read_xlsx
-Rcpp::DataFrame read_xlsx(const std::string path, SEXP sheet, bool headers, int skip_rows, int skip_columns, int num_threads);
-RcppExport SEXP _SheetReader_read_xlsx(SEXP pathSEXP, SEXP sheetSEXP, SEXP headersSEXP, SEXP skip_rowsSEXP, SEXP skip_columnsSEXP, SEXP num_threadsSEXP) {
+Rcpp::DataFrame read_xlsx(const std::string path, SEXP sheet, bool headers, int skip_rows, int skip_columns, int num_threads, SEXP col_types);
+RcppExport SEXP _SheetReader_read_xlsx(SEXP pathSEXP, SEXP sheetSEXP, SEXP headersSEXP, SEXP skip_rowsSEXP, SEXP skip_columnsSEXP, SEXP num_threadsSEXP, SEXP col_typesSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -22,13 +22,14 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< int >::type skip_rows(skip_rowsSEXP);
     Rcpp::traits::input_parameter< int >::type skip_columns(skip_columnsSEXP);
     Rcpp::traits::input_parameter< int >::type num_threads(num_threadsSEXP);
-    rcpp_result_gen = Rcpp::wrap(read_xlsx(path, sheet, headers, skip_rows, skip_columns, num_threads));
+    Rcpp::traits::input_parameter< SEXP >::type col_types(col_typesSEXP);
+    rcpp_result_gen = Rcpp::wrap(read_xlsx(path, sheet, headers, skip_rows, skip_columns, num_threads, col_types));
     return rcpp_result_gen;
 END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_SheetReader_read_xlsx", (DL_FUNC) &_SheetReader_read_xlsx, 6},
+    {"_SheetReader_read_xlsx", (DL_FUNC) &_SheetReader_read_xlsx, 7},
     {NULL, NULL, 0}
 };
 
