@@ -485,20 +485,20 @@ std::pair<size_t, std::vector<XlsxCell>> XlsxSheet::nextRow() {
 			// currentCell <= cells.size() because there might be location info after last cell
 			for (; currentCell <= cells.size(); ++currentCell) {
 				while (currentLoc < locs.size() && locs[currentLoc].buffer == currentBuffer && locs[currentLoc].cell == currentCell) {
-					//std::cout << "loc " << currentLoc << "/" << locs.size() << ": " << locs[currentLoc].buffer << " vs " << currentBuffer << ", " << locs[currentLoc].cell << " vs " << currentCell << " (" << locs[currentLoc].column << "/" << locs[currentLoc].row << ")" << std::endl;
+					//std::cout << "loc " << currentLoc << "/" << locs.size() << ": " << locs[currentLoc].buffer << " vs " << currentBuffer << ", " << locs[currentLoc].cell << " vs " << currentCell << " (" << locs[currentLoc].column << "/" << locs[currentLoc].row << "), " << currentRow << std::endl;
 					currentColumn = locs[currentLoc].column;
 					if (locs[currentLoc].row == -1ul) {
 						++currentRow;
 					    ++currentLoc;
                         //std::cout << "DEBUG1 " << currentRow << std::endl;
                         if (currentRow > 0) return std::pair<size_t, std::vector<XlsxCell>>(currentRow - 1, currentValues);
-					} else if (locs[currentLoc].row > currentRow) {
-                        const size_t nextRow = locs[currentLoc].row;
+					} else if (static_cast<long long>(locs[currentLoc].row) > currentRow) {
+                        const long long nextRow = static_cast<long long>(locs[currentLoc].row);
                         //std::cout << "nextRow, currentRow: " << nextRow << ", " << currentRow << std::endl;
                         if (nextRow > currentRow + 1) {
                             ++currentRow;
                         } else {
-                            currentRow = locs[currentLoc].row;
+                            currentRow = nextRow;
                             ++currentLoc;
                         }
                         //std::cout << "DEBUG2 " << currentRow << std::endl;
