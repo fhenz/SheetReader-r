@@ -394,7 +394,7 @@ void XlsxSheet::interleavedFunc(size_t numThreads, ParseState<numBuffers>& parse
             /*if (rowNumber == 0 || cellColumn == 0 || cellType == CellType::T_NONE) {
                 throw std::runtime_error("Error when parsing cell");
             }*/
-            //std::cout << "Thread " << threadId << ": " << expectedRow << " / " << expectedColumn << ", " << static_cast<int>(cellType) << " (offset " << offset << "): "/* << cellValueBuffer*/ << std::endl;
+            //std::cout << "Thread " << parseState.threadId << ": " << expectedRow << " / " << expectedColumn << ", " << static_cast<int>(cellType) << " (offset " << offset << "): "/* << cellValueBuffer*/ << std::endl;
             XlsxCell cll;
             //cll.type = cellType;
             if (cellType == CellType::T_NUMERIC) {
@@ -469,15 +469,16 @@ std::pair<size_t, std::vector<XlsxCell>> XlsxSheet::nextRow() {
         currentLocs = std::vector<size_t>(mCells.size(), 0);
     }
     std::vector<XlsxCell> currentValues;
-    currentValues.resize(mDimension.first - mSkipColumns, XlsxCell());
 	for (; currentBuffer < maxBuffers; ++currentBuffer) {
 		for (; currentThread < mCells.size(); ++currentThread) {
 			if (mCells[currentThread].size() == 0) {
                 //std::cout << "Iteration stop 2" << std::endl;
                 currentBuffer = maxBuffers;
-                return std::pair<size_t, std::vector<XlsxCell>>(currentRow - 1, currentValues);
+                const auto ret = std::pair<size_t, std::vector<XlsxCell>>(currentRow, currentValues);
+                currentRow = 0;
+                return ret;
 			}
-			//std::cout << currentBuffer << " / " << maxBuffers << ", " << currentThread << "/" << mCells.size() << ", " << currentCell << std::endl;
+			//std::cout << currentBuffer << " / " << maxBuffers << ", " << currentThread << "/" << mCells.size() << ", " << currentCell << ", " << mCells[currentThread].size() << std::endl;
 			const std::vector<XlsxCell> cells = mCells[currentThread].front();
 			const std::vector<LocationInfo>& locs = mLocationInfos[currentThread];
 			size_t& currentLoc = currentLocs[currentThread];
@@ -512,6 +513,7 @@ std::pair<size_t, std::vector<XlsxCell>> XlsxSheet::nextRow() {
 				const auto adjustedColumn = currentColumn;
                 ++currentColumn;
 				const XlsxCell& cell = cells[currentCell];
+                if (adjustedColumn >= currentValues.size()) currentValues.resize(mDimension.first - mSkipColumns, XlsxCell());
                 currentValues[adjustedColumn] = cell;
             }
             mCells[currentThread].pop_front();
@@ -519,5 +521,7 @@ std::pair<size_t, std::vector<XlsxCell>> XlsxSheet::nextRow() {
         }
         currentThread = 0;
     }
-    return std::pair<size_t, std::vector<XlsxCell>>(0, {});
+    const auto ret = std::pair<size_t, std::vector<XlsxCell>>(currentRow, currentValues);
+    currentRow = 0;
+    return ret;
 }
