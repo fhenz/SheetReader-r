@@ -1,0 +1,3 @@
+[submodule "src/sheetreader-core"]
+	path = src/sheetreader-core
+	url = https://github.com/polydbms/sheetreader-core.git

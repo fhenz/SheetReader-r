@@ -1,8 +1,8 @@
 #include <Rcpp.h>
 #include <thread>
 
-#include "XlsxFile.h"
-#include "XlsxSheet.h"
+#include "sheetreader-core/src/XlsxFile.h"
+#include "sheetreader-core/src/XlsxSheet.h"
 
 std::string formatNumber(const double number) {
 	char buf[64];

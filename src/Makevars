@@ -1,6 +1,6 @@
 PKG_CPPFLAGS = -DTARGET_R -DMINIZ_USE_UNALIGNED_LOADS_AND_STORES=0
 
-SOURCES = interface.cpp RcppExports.cpp XlsxSheet.cpp XlsxFile.cpp miniz/miniz.cpp
+SOURCES = interface.cpp RcppExports.cpp sheetreader-core/src/XlsxSheet.cpp sheetreader-core/src/XlsxFile.cpp sheetreader-core/src/miniz/miniz.cpp
 
 OBJECTS1 = $(SOURCES:.cpp=.o)
 OBJECTS = $(OBJECTS1:.c=.o)
