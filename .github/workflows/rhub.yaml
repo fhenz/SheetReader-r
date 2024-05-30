@@ -55,7 +55,8 @@ jobs:
         run: |
           dnf -y install git
       - uses: r-hub/actions/checkout@v1
-        submodules: true
+        with:
+          submodules: true
       - uses: r-hub/actions/platform-info@v1
         with:
           token: ${{ secrets.RHUB_TOKEN }}
