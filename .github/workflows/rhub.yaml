@@ -51,9 +51,6 @@ jobs:
       image: ${{ matrix.config.container }}
 
     steps:
-      - name: Install git
-        run: |
-          dnf -y install git
       - uses: r-hub/actions/checkout@v1
         with:
           submodules: true
