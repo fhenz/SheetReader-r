@@ -18,3 +18,4 @@ LinkingTo: Rcpp
 URL: https://github.com/fhenz/SheetReader-r
 BugReports: https://github.com/fhenz/SheetReader-r/issues
 Encoding: UTF-8
+SystemRequirements: git
