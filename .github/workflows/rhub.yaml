@@ -52,6 +52,15 @@ jobs:
 
     steps:
       - uses: r-hub/actions/checkout@v1
+      - name: Git debug 1
+        run: |
+          ls /usr/bin
+      - name: Git debug 2
+        run: |
+          which git
+      - name: Git debug 3
+        run: |
+          git --version
       - name: Checkout submodules
         run: |
           git submodule update --init --recursive
