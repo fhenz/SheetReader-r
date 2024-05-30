@@ -1,7 +1,10 @@
 ^\.git$
+^\.github$
 ^\.vscode$
 ^testing$
 ^benchmarking$
 ^README\.md$
 ^src/iterate.cpp$
 ^.*\.o$
+^src/sheetreader-core/README.md$
+^src/sheetreader-core/.git$
