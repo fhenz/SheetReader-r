@@ -51,7 +51,11 @@ jobs:
       image: ${{ matrix.config.container }}
 
     steps:
+      - name: Install git
+        run: |
+          dnf -y install git
       - uses: r-hub/actions/checkout@v1
+        submodules: true
       - uses: r-hub/actions/platform-info@v1
         with:
           token: ${{ secrets.RHUB_TOKEN }}
@@ -60,18 +64,6 @@ jobs:
         with:
           token: ${{ secrets.RHUB_TOKEN }}
           job-config: ${{ matrix.config.job-config }}
-      - name: Git debug 1
-        run: |
-          ls /usr/bin
-      - name: Git debug 2
-        run: |
-          which git
-      - name: Git debug 3
-        run: |
-          git --version
-      - name: Checkout submodules
-        run: |
-          git submodule update --init --recursive
       - uses: r-hub/actions/run-check@v1
         with:
           token: ${{ secrets.RHUB_TOKEN }}
